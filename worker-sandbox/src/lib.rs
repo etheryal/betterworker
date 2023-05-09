@@ -8,10 +8,7 @@ use std::{
 
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
-use worker::{
-    http::{HttpClone, Method, RequestRedirect},
-    *,
-};
+use worker::{http::Method, *};
 
 mod alarm;
 mod counter;
@@ -77,93 +74,6 @@ pub struct CreatePerson {
     pub age: i32,
 }
 
-async fn test_clone_req(mut req: http::Request<body::Body>) -> body::Bytes {
-    // Change version to something non-default
-    *req.version_mut() = http::Version::HTTP_3;
-
-    // Store an extension
-    struct Ext;
-    req.extensions_mut().insert(Ext);
-    req.extensions_mut().insert(AbortSignal::abort());
-
-    // Store original values
-    let original_method = req.method().clone();
-    let original_verion = req.version();
-    let original_uri = req.uri().clone();
-    let original_headers = req.headers().clone();
-
-    let clone = req.clone();
-
-    // Make sure original values are kept
-    assert_eq!(req.method(), original_method);
-    assert_eq!(req.version(), original_verion);
-    assert_eq!(req.uri(), &original_uri);
-    assert_eq!(req.headers(), &original_headers);
-    assert_eq!(req.extensions().len(), 4);
-    assert!(req.extensions().get::<Cf>().is_some());
-    assert!(req.extensions().get::<Ext>().is_some());
-    assert!(req.extensions().get::<RequestRedirect>().is_some());
-    assert!(req.extensions().get::<AbortSignal>().is_some());
-
-    // Make sure clone is correct
-    assert_eq!(clone.method(), req.method());
-    assert_eq!(clone.version(), req.version());
-    assert_eq!(clone.uri(), req.uri());
-    assert_eq!(clone.headers(), req.headers());
-    assert_eq!(clone.extensions().len(), 2);
-    assert_eq!(
-        clone.extensions().get::<RequestRedirect>(),
-        req.extensions().get::<RequestRedirect>()
-    );
-    assert!(clone.extensions().get::<AbortSignal>().is_some());
-
-    // Make sure body is correct
-    let body = req.into_body().bytes().await.unwrap();
-    let clone_body = clone.into_body().bytes().await.unwrap();
-    assert_eq!(body, clone_body);
-
-    body
-}
-
-async fn test_clone_res(body: body::Bytes) -> body::Bytes {
-    struct Ext;
-
-    let mut res = http::Response::builder()
-        .status(http::StatusCode::CREATED)
-        .version(http::Version::HTTP_3)
-        .header("foo", "bar")
-        .extension(Ext)
-        .body(body::Body::from(body))
-        .unwrap();
-
-    // Store original values
-    let original_status = res.status();
-    let original_verion = res.version();
-    let original_headers = res.headers().clone();
-
-    let clone = res.clone();
-
-    // Make sure original values are kept
-    assert_eq!(res.status(), original_status);
-    assert_eq!(res.version(), original_verion);
-    assert_eq!(res.headers(), &original_headers);
-    assert_eq!(res.extensions().len(), 1);
-    assert!(res.extensions().get::<Ext>().is_some());
-
-    // Make sure clone is correct
-    assert_eq!(clone.status(), res.status());
-    assert_eq!(clone.version(), res.version());
-    assert_eq!(clone.headers(), res.headers());
-    assert!(clone.extensions().is_empty());
-
-    // Make sure body is correct
-    let body = res.into_body().bytes().await.unwrap();
-    let clone_body = clone.into_body().bytes().await.unwrap();
-    assert_eq!(body, clone_body);
-
-    body
-}
-
 static GLOBAL_STATE: AtomicBool = AtomicBool::new(false);
 
 static GLOBAL_QUEUE_STATE: Mutex<Vec<QueueBody>> = Mutex::new(Vec::new());
@@ -188,14 +98,14 @@ pub async fn main(
     let res = match (req.method().clone(), req.uri().path()) {
         (Method::GET, "/request") => handle_a_request(req),
         (Method::GET, "/empty") => {
-            let res = worker::http::response::into_wasm(http::Response::new("".into()));
+            let res = worker::http::response::into_web_sys_response(http::Response::new("".into()));
             assert!(res.body().is_none());
 
-            let res = worker::http::response::from_wasm(res);
-            let res = worker::http::response::into_wasm(res);
+            let res = worker::http::response::from_web_sys_response(res);
+            let res = worker::http::response::into_web_sys_response(res);
             assert!(res.body().is_none());
 
-            worker::http::response::from_wasm(res)
+            worker::http::response::from_web_sys_response(res)
         }
         (Method::GET, "/body") => http::Response::new("body".into()),
         (Method::GET, "/status-code") => http::Response::builder()
@@ -206,29 +116,6 @@ pub async fn main(
             let bytes = req.into_body().bytes().await.unwrap();
             assert_eq!(bytes, [0u8, 1, 2][..]);
             http::Response::new(bytes.into())
-        }
-        (Method::POST, "/clone") => {
-            let body = test_clone_req(req).await;
-            let res_body = test_clone_res(body.clone()).await;
-            assert_eq!(body, res_body);
-
-            http::Response::new(body.into())
-        }
-        (Method::POST, "/clone-inner") => {
-            let clone = req.clone_inner().unwrap();
-
-            let body = req.into_body().bytes().await.unwrap();
-            let clone_body = clone.into_body().bytes().await.unwrap();
-            assert_eq!(body, clone_body);
-
-            // Make sure that cloning a non-JS request returns none
-            assert!(http::Request::get("https://example.com")
-                .body(body::Body::empty())
-                .unwrap()
-                .clone_inner()
-                .is_none());
-
-            http::Response::new(body.into())
         }
         (Method::POST, "/headers") => {
             let mut headers = req.headers().clone();
@@ -441,11 +328,7 @@ pub async fn main(
         }
         (Method::GET, "/d1/people") => {
             let d1: Database = env.d1("DB")?;
-            let people: Vec<Person> = d1
-                .prepare("select * from people;")
-                .all()
-                .await?
-                .results()?;
+            let people: Vec<Person> = d1.prepare("select * from people;").all().await?.results()?;
             http::Response::new(serde_json::to_string(&people).unwrap().into())
         }
         (Method::POST, "/d1/people") => {
@@ -453,9 +336,7 @@ pub async fn main(
                 serde_json::from_str(req.into_body().text().await?.as_str()).unwrap();
             let d1: Database = env.d1("DB")?;
             let new_person = d1
-                .prepare(
-                    "insert into people (name, age) values(?, ?) returning *;",
-                )
+                .prepare("insert into people (name, age) values(?, ?) returning *;")
                 .bind(&[
                     create_person.name.to_string().into(),
                     create_person.age.into(),

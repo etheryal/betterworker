@@ -6,19 +6,19 @@ use std::{
 use bytes::Bytes;
 use futures_util::{stream::FusedStream, Stream, StreamExt};
 use http::HeaderMap;
+use send_wrapper::SendWrapper;
 use wasm_bindgen::JsCast;
 use wasm_streams::readable::IntoStream;
 
 use crate::Error;
 
 /// Body wrapping a JS `ReadableStream`.
-pub(super) struct WasmStreamBody(IntoStream<'static>);
-
-unsafe impl Send for WasmStreamBody {}
+pub(super) struct WasmStreamBody(SendWrapper<IntoStream<'static>>);
 
 impl WasmStreamBody {
     pub fn new(stream: web_sys::ReadableStream) -> Self {
-        Self(wasm_streams::ReadableStream::from_raw(stream.unchecked_into()).into_stream())
+        let stream = wasm_streams::ReadableStream::from_raw(stream.unchecked_into()).into_stream();
+        Self(SendWrapper::new(stream))
     }
 }
 
@@ -34,7 +34,7 @@ impl http_body::Body for WasmStreamBody {
         self.0
             .poll_next_unpin(cx)
             .map_ok(|buf| js_sys::Uint8Array::from(buf).to_vec().into())
-            .map_err(Error::Internal)
+            .map_err(Error::from)
     }
 
     #[inline]

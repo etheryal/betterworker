@@ -5,12 +5,11 @@ use std::{
 
 use futures_util::{Future, FutureExt};
 use js_sys::Promise;
+use send_wrapper::SendWrapper;
 use wasm_bindgen_futures::JsFuture;
 
 /// [`JsFuture`] that is explicitely [`Send`].
-pub(crate) struct SendJsFuture(JsFuture);
-
-unsafe impl Send for SendJsFuture {}
+pub(crate) struct SendJsFuture(SendWrapper<JsFuture>);
 
 impl Future for SendJsFuture {
     type Output = <JsFuture as Future>::Output;
@@ -22,11 +21,14 @@ impl Future for SendJsFuture {
 
 impl From<Promise> for SendJsFuture {
     fn from(p: Promise) -> Self {
-        Self(JsFuture::from(p))
+        Self(SendWrapper::new(JsFuture::from(p)))
     }
 }
 
-#[allow(unused)]
-pub(crate) fn assert_send<T: Send>() {}
-#[allow(unused)]
-pub(crate) fn assert_send_value(_: impl Send) {}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use static_assertions::assert_impl_all;
+
+    assert_impl_all!(SendJsFuture: Send, Sync, Unpin);
+}

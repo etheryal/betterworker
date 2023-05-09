@@ -43,7 +43,7 @@ fn version_from_string(version: &str) -> http::Version {
 /// ```
 ///
 /// [`Extensions`]: http::Extensions
-pub fn from_wasm(req: web_sys::Request) -> http::Request<Body> {
+pub fn from_web_sys_request(req: web_sys::Request) -> http::Request<Body> {
     let mut builder = http::Request::builder()
         .method(&*req.method())
         .uri(req.url())
@@ -92,7 +92,7 @@ pub fn from_wasm(req: web_sys::Request) -> http::Request<Body> {
 /// ```
 ///
 /// [`Extensions`]: http::Extensions
-pub fn into_wasm(mut req: http::Request<Body>) -> web_sys::Request {
+pub fn into_web_sys_request(mut req: http::Request<Body>) -> web_sys::Request {
     let method = req.method().to_string();
     let uri = req.uri().to_string();
 

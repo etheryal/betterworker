@@ -17,14 +17,14 @@ impl Fetcher {
     /// Invoke a fetch event in a worker with a url and optionally a [RequestInit].
     pub async fn fetch(&self, req: http::Request<Body>) -> Result<http::Response<Body>> {
         let fut = {
-            let req = request::into_wasm(req);
+            let req = request::into_web_sys_request(req);
             let promise = self.0.fetch(&req);
 
             SendJsFuture::from(promise)
         };
 
         let res = fut.await?.dyn_into()?;
-        Ok(response::from_wasm(res))
+        Ok(response::from_web_sys_response(res))
     }
 }
 

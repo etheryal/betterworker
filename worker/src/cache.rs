@@ -1,3 +1,4 @@
+use send_wrapper::SendWrapper;
 use serde::Serialize;
 use wasm_bindgen::JsCast;
 use worker_sys::ext::CacheStorageExt;
@@ -33,20 +34,13 @@ use crate::{
 ///
 /// Use the `Cache-Control` method to store the response without the `Set-Cookie` header.
 #[derive(Debug)]
-pub struct Cache {
-    inner: web_sys::Cache,
-}
-
-unsafe impl Send for Cache {}
-unsafe impl Sync for Cache {}
+pub struct Cache(SendWrapper<web_sys::Cache>);
 
 impl Default for Cache {
     fn default() -> Self {
         let global: web_sys::WorkerGlobalScope = js_sys::global().unchecked_into();
 
-        Self {
-            inner: global.caches().unwrap().default(),
-        }
+        Self(SendWrapper::new(global.caches().unwrap().default()))
     }
 }
 
@@ -63,7 +57,7 @@ impl Cache {
         // unwrap is safe because this promise never rejects
         // https://developer.mozilla.org/en-US/docs/Web/API/CacheStorage/open
         let inner = fut.await.unwrap().into();
-        Self { inner }
+        Self(SendWrapper::new(inner))
     }
 
     /// Adds to the cache a [`Response`] keyed to the given request.
@@ -82,8 +76,8 @@ impl Cache {
     pub async fn put<K: Into<CacheKey>>(&self, key: K, res: impl Into<CacheValue>) -> Result<()> {
         let fut = {
             let promise = match key.into() {
-                CacheKey::Url(url) => self.inner.put_with_str(url.as_str(), &res.into().0),
-                CacheKey::Request(req) => self.inner.put_with_request(&req, &res.into().0),
+                CacheKey::Url(url) => self.0.put_with_str(url.as_str(), &res.into().0),
+                CacheKey::Request(req) => self.0.put_with_request(&req, &res.into().0),
             };
 
             SendJsFuture::from(promise)
@@ -118,9 +112,9 @@ impl Cache {
 
             let promise = match key.into() {
                 CacheKey::Url(url) => self
-                    .inner
+                    .0
                     .match_with_str_and_options(url.as_str(), &options),
-                CacheKey::Request(req) => self.inner.match_with_request_and_options(&req, &options),
+                CacheKey::Request(req) => self.0.match_with_request_and_options(&req, &options),
             };
 
             SendJsFuture::from(promise)
@@ -132,7 +126,7 @@ impl Cache {
             Ok(None)
         } else {
             let edge_response: web_sys::Response = result.into();
-            let response = response::from_wasm(edge_response);
+            let response = response::from_web_sys_response(edge_response);
             Ok(Some(response))
         }
     }
@@ -153,10 +147,10 @@ impl Cache {
 
             let promise = match key.into() {
                 CacheKey::Url(url) => self
-                    .inner
+                    .0
                     .delete_with_str_and_options(url.as_str(), &options),
                 CacheKey::Request(req) => {
-                    self.inner.delete_with_request_and_options(&req, &options)
+                    self.0.delete_with_request_and_options(&req, &options)
                 }
             };
 
@@ -206,7 +200,7 @@ impl From<web_sys::Request> for CacheKey {
 
 impl From<http::Request<Body>> for CacheKey {
     fn from(req: http::Request<Body>) -> Self {
-        Self::Request(request::into_wasm(req))
+        Self::Request(request::into_web_sys_request(req))
     }
 }
 
@@ -220,7 +214,7 @@ impl From<web_sys::Response> for CacheValue {
 
 impl From<http::Response<Body>> for CacheValue {
     fn from(res: http::Response<Body>) -> Self {
-        Self(response::into_wasm(res))
+        Self(response::into_web_sys_response(res))
     }
 }
 

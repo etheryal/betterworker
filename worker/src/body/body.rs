@@ -6,6 +6,7 @@ use std::{
 use bytes::Bytes;
 use futures_util::Stream;
 use http::HeaderMap;
+use send_wrapper::SendWrapper;
 use serde::de::DeserializeOwned;
 
 use crate::{
@@ -32,12 +33,10 @@ where
 #[derive(Debug)]
 pub(crate) enum BodyInner {
     None,
-    Regular(BoxBody),
-    Request(web_sys::Request),
-    Response(web_sys::Response),
+    BoxBody(BoxBody),
+    WebSysRequest(SendWrapper<web_sys::Request>),
+    WebSysResponse(SendWrapper<web_sys::Response>),
 }
-
-unsafe impl Send for BodyInner {}
 
 /// The body type used in requests and responses.
 #[derive(Debug)]
@@ -67,7 +66,7 @@ impl Body {
         }
 
         try_downcast(body).unwrap_or_else(|body| {
-            Self(BodyInner::Regular(
+            Self(BodyInner::BoxBody(
                 body.map_err(|_| Error::BadEncoding).boxed_unsync(),
             ))
         })
@@ -82,7 +81,7 @@ impl Body {
     ///
     /// # Example
     ///
-    /// ```rust,ignore
+    /// ```rust,no_run
     /// # async fn run() -> Result<(), worker::Error> {
     /// # use worker::body::Body;
     /// let body = Body::from("hello world");
@@ -104,9 +103,9 @@ impl Body {
         // performance as there's no polling overhead.
         match self.0 {
             BodyInner::None => Ok(Bytes::new()),
-            BodyInner::Regular(body) => super::to_bytes(body).await,
-            BodyInner::Request(req) => Ok(array_buffer_to_bytes(req.array_buffer()).await),
-            BodyInner::Response(res) => Ok(array_buffer_to_bytes(res.array_buffer()).await),
+            BodyInner::BoxBody(body) => super::to_bytes(body).await,
+            BodyInner::WebSysRequest(req) => Ok(array_buffer_to_bytes(req.array_buffer()).await),
+            BodyInner::WebSysResponse(res) => Ok(array_buffer_to_bytes(res.array_buffer()).await),
         }
     }
 
@@ -114,7 +113,7 @@ impl Body {
     ///
     /// # Example
     ///
-    /// ```rust,ignore
+    /// ```rust,no_run
     /// # async fn run() -> Result<(), worker::Error> {
     /// # use worker::body::Body;
     /// let body = Body::from("hello world");
@@ -132,7 +131,7 @@ impl Body {
     ///
     /// # Example
     ///
-    /// ```rust,ignore
+    /// ```rust,no_run
     /// # async fn run() -> Result<(), worker::Error> {
     /// # use bytes::Bytes;
     /// # use serde::Deserialize;
@@ -156,27 +155,23 @@ impl Body {
     pub(crate) fn is_none(&self) -> bool {
         match &self.0 {
             BodyInner::None => true,
-            BodyInner::Regular(_) => false,
-            BodyInner::Request(req) => req.body().is_none(),
-            BodyInner::Response(res) => res.body().is_none(),
+            BodyInner::BoxBody(_) => false,
+            BodyInner::WebSysRequest(req) => req.body().is_none(),
+            BodyInner::WebSysResponse(res) => res.body().is_none(),
         }
-    }
-
-    pub(crate) fn inner(&self) -> &BodyInner {
-        &self.0
     }
 
     /// Turns the body into a regular streaming body, if it's not already, and returns the underlying body.
     fn as_inner_box_body(&mut self) -> Option<&mut BoxBody> {
         match &self.0 {
-            BodyInner::Request(req) => *self = req.body().map(WasmStreamBody::new).into(),
-            BodyInner::Response(res) => *self = res.body().map(WasmStreamBody::new).into(),
+            BodyInner::WebSysRequest(req) => *self = req.body().map(WasmStreamBody::new).into(),
+            BodyInner::WebSysResponse(res) => *self = res.body().map(WasmStreamBody::new).into(),
             _ => {}
         }
 
         match &mut self.0 {
             BodyInner::None => None,
-            BodyInner::Regular(body) => Some(body),
+            BodyInner::BoxBody(body) => Some(body),
             _ => unreachable!(),
         }
     }
@@ -205,13 +200,13 @@ where
 
 impl From<web_sys::Request> for Body {
     fn from(req: web_sys::Request) -> Self {
-        Self(BodyInner::Request(req))
+        Self(BodyInner::WebSysRequest(SendWrapper::new(req)))
     }
 }
 
 impl From<web_sys::Response> for Body {
     fn from(res: web_sys::Response) -> Self {
-        Self(BodyInner::Response(res))
+        Self(BodyInner::WebSysResponse(SendWrapper::new(res)))
     }
 }
 
@@ -265,9 +260,9 @@ impl HttpBody for Body {
     fn size_hint(&self) -> http_body::SizeHint {
         match &self.0 {
             BodyInner::None => http_body::SizeHint::with_exact(0),
-            BodyInner::Regular(body) => body.size_hint(),
-            BodyInner::Request(_) => http_body::SizeHint::new(),
-            BodyInner::Response(_) => http_body::SizeHint::new(),
+            BodyInner::BoxBody(body) => body.size_hint(),
+            BodyInner::WebSysRequest(_) => http_body::SizeHint::new(),
+            BodyInner::WebSysResponse(_) => http_body::SizeHint::new(),
         }
     }
 
@@ -275,9 +270,9 @@ impl HttpBody for Body {
     fn is_end_stream(&self) -> bool {
         match &self.0 {
             BodyInner::None => true,
-            BodyInner::Regular(body) => body.is_end_stream(),
-            BodyInner::Request(_) => false,
-            BodyInner::Response(_) => false,
+            BodyInner::BoxBody(body) => body.is_end_stream(),
+            BodyInner::WebSysRequest(_) => false,
+            BodyInner::WebSysResponse(_) => false,
         }
     }
 }
@@ -289,4 +284,11 @@ impl Stream for Body {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.poll_data(cx)
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    static_assertions::assert_impl_all!(Body: Send, Unpin);
 }

@@ -35,18 +35,13 @@ pub async fn fetch(req: http::Request<impl Into<Body>>) -> Result<http::Response
         let req = req.map(Into::into);
         let global = js_sys::global().unchecked_into::<WorkerGlobalScope>();
 
-        let req = request::into_wasm(req);
+        let req = request::into_web_sys_request(req);
         let promise = global.fetch_with_request(&req);
 
         SendJsFuture::from(promise)
     };
 
     fut.await
-        .map(|res| response::from_wasm(res.unchecked_into()))
+        .map(|res| response::from_web_sys_response(res.unchecked_into()))
         .map_err(Error::from)
-}
-
-fn _assert_send() {
-    use crate::futures::assert_send_value;
-    assert_send_value(fetch(http::Request::new(())));
 }

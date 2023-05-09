@@ -54,7 +54,7 @@ pub fn expand_macro(attr: TokenStream, item: TokenStream) -> TokenStream {
                 true => {
                     quote! {
                         let res = ::worker::http::Response::builder().status(500).body(e.to_string()).unwrap();
-                        ::worker::http::response::into_wasm(res)
+                        ::worker::http::response::into_web_sys_response(res)
                     }
                 }
                 false => {
@@ -67,12 +67,12 @@ pub fn expand_macro(attr: TokenStream, item: TokenStream) -> TokenStream {
             let wrapper_fn = quote! {
                 pub async fn #wrapper_fn_ident(
                     req: ::worker::worker_sys::web_sys::Request,
-                    env: ::worker::Env,
+                    env: ::worker::worker_sys::Env,
                     ctx: ::worker::worker_sys::Context
                 ) -> ::worker::worker_sys::web_sys::Response {
                     let ctx = worker::Context::new(ctx);
                     // get the worker::Result<worker::Response> by calling the original fn
-                    match #input_fn_ident(::worker::http::request::from_wasm(req), env, ctx).await.map(::worker::http::response::into_wasm) {
+                    match #input_fn_ident(::worker::http::request::from_web_sys_request(req), ::worker::Env::from(env), ctx).await.map(::worker::http::response::into_web_sys_response) {
                         Ok(res) => res,
                         Err(e) => {
                             ::worker::console_log!("{}", &e);
@@ -108,9 +108,9 @@ pub fn expand_macro(attr: TokenStream, item: TokenStream) -> TokenStream {
             input_fn.sig.ident = input_fn_ident.clone();
 
             let wrapper_fn = quote! {
-                pub async fn #wrapper_fn_ident(event: ::worker::worker_sys::ScheduledEvent, env: ::worker::Env, ctx: ::worker::worker_sys::ScheduleContext) {
+                pub async fn #wrapper_fn_ident(event: ::worker::worker_sys::ScheduledEvent, env: ::worker::worker_sys::Env, ctx: ::worker::worker_sys::ScheduleContext) {
                     // call the original fn
-                    #input_fn_ident(::worker::ScheduledEvent::from(event), env, ::worker::ScheduleContext::from(ctx)).await
+                    #input_fn_ident(::worker::ScheduledEvent::from(event), ::worker::Env::from(env), ::worker::ScheduleContext::from(ctx)).await
                 }
             };
             let wasm_bindgen_code =
@@ -141,10 +141,10 @@ pub fn expand_macro(attr: TokenStream, item: TokenStream) -> TokenStream {
             input_fn.sig.ident = input_fn_ident.clone();
 
             let wrapper_fn = quote! {
-                pub async fn #wrapper_fn_ident(event: ::worker::worker_sys::MessageBatch, env: ::worker::Env, ctx: ::worker::worker_sys::Context) {
+                pub async fn #wrapper_fn_ident(event: ::worker::worker_sys::MessageBatch, env: ::worker::worker_sys::Env, ctx: ::worker::worker_sys::Context) {
                     // call the original fn
                     let ctx = worker::Context::new(ctx);
-                    match #input_fn_ident(::worker::MessageBatch::new(event), env, ctx).await {
+                    match #input_fn_ident(::worker::MessageBatch::new(event), ::worker::Env::from(env), ctx).await {
                         Ok(()) => {},
                         Err(e) => {
                             ::worker::console_log!("{}", &e);

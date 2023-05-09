@@ -1,6 +1,7 @@
 use crate::{fetch, Error, Result};
 use futures_channel::mpsc::UnboundedReceiver;
 use futures_util::Stream;
+use send_wrapper::SendWrapper;
 use serde::Serialize;
 use url::Url;
 use worker_sys::ext::WebSocketExt;
@@ -15,14 +16,11 @@ use wasm_bindgen::JsCast;
 pub use crate::ws_events::*;
 
 /// Struct holding the values for a JavaScript `WebSocketPair`
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct WebSocketPair {
     pub client: WebSocket,
     pub server: WebSocket,
 }
-
-unsafe impl Send for WebSocketPair {}
-unsafe impl Sync for WebSocketPair {}
 
 impl WebSocketPair {
     /// Creates a new `WebSocketPair`.
@@ -35,13 +33,10 @@ impl WebSocketPair {
 }
 
 /// Wrapper struct for underlying worker-sys `WebSocket`
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct WebSocket {
-    socket: web_sys::WebSocket,
+    socket: SendWrapper<web_sys::WebSocket>,
 }
-
-unsafe impl Send for WebSocket {}
-unsafe impl Sync for WebSocket {}
 
 impl WebSocket {
     /// Attempts to establish a [`WebSocket`] connection to the provided [`Url`].
@@ -249,9 +244,6 @@ pub struct EventStream<'ws> {
     )>,
 }
 
-unsafe impl Send for EventStream<'_> {}
-unsafe impl Sync for EventStream<'_> {}
-
 impl<'ws> Stream for EventStream<'ws> {
     type Item = Result<WebsocketEvent>;
 
@@ -302,7 +294,7 @@ impl PinnedDrop for EventStream<'_> {
 
 impl From<web_sys::WebSocket> for WebSocket {
     fn from(socket: web_sys::WebSocket) -> Self {
-        Self { socket }
+        Self { socket: SendWrapper::new(socket) }
     }
 }
 
@@ -313,6 +305,7 @@ impl AsRef<web_sys::WebSocket> for WebSocket {
 }
 
 pub mod ws_events {
+    use send_wrapper::SendWrapper;
     use serde::de::DeserializeOwned;
     use wasm_bindgen::JsValue;
 
@@ -330,9 +323,6 @@ pub mod ws_events {
     pub struct MessageEvent {
         event: web_sys::MessageEvent,
     }
-
-    unsafe impl Send for MessageEvent {}
-    unsafe impl Sync for MessageEvent {}
 
     impl From<web_sys::MessageEvent> for MessageEvent {
         fn from(event: web_sys::MessageEvent) -> Self {
@@ -377,37 +367,32 @@ pub mod ws_events {
     }
 
     /// Wrapper/Utility struct for the `web_sys::CloseEvent`
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct CloseEvent {
-        event: web_sys::CloseEvent,
-    }
-
-    unsafe impl Send for CloseEvent {}
-    unsafe impl Sync for CloseEvent {}
+    #[derive(Debug, Clone)]
+    pub struct CloseEvent(SendWrapper<web_sys::CloseEvent>);
 
     impl CloseEvent {
         pub fn reason(&self) -> String {
-            self.event.reason()
+            self.0.reason()
         }
 
         pub fn code(&self) -> u16 {
-            self.event.code()
+            self.0.code()
         }
 
         pub fn was_clean(&self) -> bool {
-            self.event.was_clean()
+            self.0.was_clean()
         }
     }
 
     impl From<web_sys::CloseEvent> for CloseEvent {
         fn from(event: web_sys::CloseEvent) -> Self {
-            Self { event }
+            Self(SendWrapper::new(event))
         }
     }
 
     impl AsRef<web_sys::CloseEvent> for CloseEvent {
         fn as_ref(&self) -> &web_sys::CloseEvent {
-            &self.event
+            &self.0
         }
     }
 }

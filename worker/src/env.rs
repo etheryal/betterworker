@@ -9,21 +9,22 @@ use crate::{durable::ObjectNamespace, Bucket, DynamicDispatcher, Fetcher, Result
 
 use js_sys::JsString;
 use send_wrapper::SendWrapper;
-use wasm_bindgen::{prelude::*, JsCast, JsValue};
+use worker_sys::Env as EnvSys;
+use wasm_bindgen::{JsCast, JsValue};
 use worker_kv::KvStore;
 
-#[wasm_bindgen]
-extern "C" {
-    /// Env contains any bindings you have associated with the Worker when you uploaded it.
-    pub type Env;
-}
+/// Env contains any bindings you have associated with the Worker when you uploaded it.
+pub struct Env(SendWrapper<EnvSys>);
 
-unsafe impl Send for Env {}
-unsafe impl Sync for Env {}
+impl From<EnvSys> for Env {
+    fn from(env: EnvSys) -> Self {
+        Self(SendWrapper::new(env))
+    }
+}
 
 impl Env {
     fn get_binding<T: TryFrom<JsValue, Error = Error>>(&self, name: &str) -> Result<T> {
-        let binding = js_sys::Reflect::get(self, &JsValue::from(name))
+        let binding = js_sys::Reflect::get(self.0.as_ref(), &JsValue::from(name))
             .map_err(|_| Error::JsError(format!("Env does not contain binding `{name}`")))?;
         if binding.is_undefined() {
             Err(format!("Binding `{name}` is undefined.").into())
@@ -46,7 +47,7 @@ impl Env {
 
     /// Access a Workers KV namespace by the binding name configured in your wrangler.toml file.
     pub fn kv(&self, binding: &str) -> Result<KvStore> {
-        KvStore::from_this(self, binding).map_err(From::from)
+        KvStore::from_this(self.0.as_ref(), binding).map_err(From::from)
     }
 
     /// Access a Durable Object namespace by the binding name configured in your wrangler.toml file.
@@ -81,6 +82,11 @@ impl Env {
     pub fn d1(&self, binding: &str) -> Result<Database> {
         self.get_binding(binding)
     }
+
+    #[doc(hidden)]
+    pub fn _inner(self) -> EnvSys {
+        self.0.take()
+    }
 }
 
 pub struct StringBinding(SendWrapper<JsString>);
@@ -114,5 +120,6 @@ impl ToString for StringBinding {
 
 /// A string value representing a binding to a secret in a Worker.
 pub type Secret = StringBinding;
+
 /// A string value representing a binding to an environment variable in a Worker.
 pub type Var = StringBinding;

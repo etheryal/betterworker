@@ -58,9 +58,6 @@ pub struct CfProperties {
     pub scrape_shield: Option<bool>,
 }
 
-unsafe impl Send for CfProperties {}
-unsafe impl Sync for CfProperties {}
-
 impl From<&CfProperties> for JsValue {
     fn from(props: &CfProperties) -> Self {
         let obj = js_sys::Object::new();
@@ -198,9 +195,6 @@ pub struct MinifyConfig {
     pub css: bool,
 }
 
-unsafe impl Send for MinifyConfig {}
-unsafe impl Sync for MinifyConfig {}
-
 /// Configuration options for Cloudflare's image optimization feature:
 /// <https://blog.cloudflare.com/introducing-polish-automatic-image-optimizati/>
 #[wasm_bindgen]
@@ -210,9 +204,6 @@ pub enum PolishConfig {
     Lossy,
     Lossless,
 }
-
-unsafe impl Send for PolishConfig {}
-unsafe impl Sync for PolishConfig {}
 
 impl Default for PolishConfig {
     fn default() -> Self {
@@ -228,4 +219,14 @@ impl From<PolishConfig> for &str {
             PolishConfig::Lossless => "lossless",
         }
     }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    static_assertions::assert_impl_all!(CfProperties: Send, Sync, Unpin);
+    static_assertions::assert_impl_all!(PolishConfig: Send, Sync, Unpin);
+    static_assertions::assert_impl_all!(MinifyConfig: Send, Sync, Unpin);
 }

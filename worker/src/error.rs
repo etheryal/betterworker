@@ -1,3 +1,6 @@
+use std::ops::Deref;
+
+use send_wrapper::SendWrapper;
 use wasm_bindgen::{JsCast, JsValue};
 
 /// All possible Error variants that might be encountered while working with a Worker.
@@ -8,18 +11,15 @@ pub enum Error {
     BodyUsed,
     Json((String, u16)),
     JsError(String),
-    Internal(JsValue),
+    Internal(SendWrapper<JsValue>),
     BindingError(String),
     RouteInsertError(matchit::InsertError),
     RouteNoDataError,
     RustError(String),
     SerdeJsonError(serde_json::Error),
     #[cfg(feature = "queue")]
-    SerdeWasmBindgenError(serde_wasm_bindgen::Error),
+    SerdeWasmBindgenError(SendWrapper<serde_wasm_bindgen::Error>),
 }
-
-unsafe impl Send for Error {}
-unsafe impl Sync for Error {}
 
 impl From<worker_kv::KvError> for Error {
     fn from(e: worker_kv::KvError) -> Self {
@@ -56,7 +56,7 @@ impl std::fmt::Display for Error {
             Error::RouteNoDataError => write!(f, "route has no corresponding shared data"),
             Error::SerdeJsonError(e) => write!(f, "Serde Error: {e}"),
             #[cfg(feature = "queue")]
-            Error::SerdeWasmBindgenError(e) => write!(f, "Serde Error: {e}"),
+            Error::SerdeWasmBindgenError(e) => write!(f, "Serde Error: {e}", e = e.deref()),
         }
     }
 }
@@ -76,7 +76,7 @@ impl From<JsValue> for Error {
             })
         }) {
             Some(s) => Self::JsError(s),
-            None => Self::Internal(v),
+            None => Self::Internal(SendWrapper::new(v)),
         }
     }
 }

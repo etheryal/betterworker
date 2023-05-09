@@ -6,6 +6,7 @@ use std::{
 use futures_util::{Stream, TryStreamExt};
 use js_sys::{BigInt, Uint8Array};
 use pin_project::pin_project;
+use send_wrapper::SendWrapper;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_streams::readable::IntoStream;
 use web_sys::ReadableStream;
@@ -17,11 +18,8 @@ use crate::{Error, Result};
 #[derive(Debug)]
 pub struct ByteStream {
     #[pin]
-    pub(crate) inner: IntoStream<'static>,
+    pub(crate) inner: SendWrapper<IntoStream<'static>>,
 }
-
-unsafe impl Send for ByteStream {}
-unsafe impl Sync for ByteStream {}
 
 impl Stream for ByteStream {
     type Item = Result<Vec<u8>>;
@@ -49,9 +47,6 @@ pub struct FixedLengthStream {
     #[pin]
     inner: Pin<Box<dyn Stream<Item = Result<Vec<u8>>> + 'static>>,
 }
-
-unsafe impl Send for FixedLengthStream {}
-unsafe impl Sync for FixedLengthStream {}
 
 impl FixedLengthStream {
     pub fn wrap(stream: impl Stream<Item = Result<Vec<u8>>> + 'static, length: u64) -> Self {

@@ -1,3 +1,4 @@
+#![deny(unsafe_code)]
 #[doc(hidden)]
 use std::result::Result as StdResult;
 

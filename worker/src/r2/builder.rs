@@ -1,6 +1,7 @@
 use std::{collections::HashMap, convert::TryFrom};
 
 use js_sys::{Array, Date as JsDate, JsString, Object as JsObject, Uint8Array};
+use send_wrapper::SendWrapper;
 use wasm_bindgen::{JsCast, JsValue};
 use worker_sys::{
     R2Bucket as EdgeR2Bucket, R2HttpMetadata as R2HttpMetadataSys,
@@ -18,9 +19,6 @@ pub struct GetOptionsBuilder<'bucket> {
     pub(crate) only_if: Option<Conditional>,
     pub(crate) range: Option<Range>,
 }
-
-unsafe impl Send for GetOptionsBuilder<'_> {}
-unsafe impl Sync for GetOptionsBuilder<'_> {}
 
 impl<'bucket> GetOptionsBuilder<'bucket> {
     /// Specifies that the object should only be returned given satisfaction of certain conditions
@@ -60,9 +58,9 @@ impl<'bucket> GetOptionsBuilder<'bucket> {
 
         let res: EdgeR2Object = value.into();
         let inner = if JsString::from("bodyUsed").js_in(&res) {
-            ObjectInner::Body(res.unchecked_into())
+            ObjectInner::Body(SendWrapper::new(res.unchecked_into()))
         } else {
-            ObjectInner::NoBody(res)
+            ObjectInner::NoBody(SendWrapper::new(res))
         };
 
         Ok(Some(Object { inner }))
@@ -161,9 +159,6 @@ pub struct PutOptionsBuilder<'bucket> {
     pub(crate) md5: Option<Vec<u8>>,
 }
 
-unsafe impl Send for PutOptionsBuilder<'_> {}
-unsafe impl Sync for PutOptionsBuilder<'_> {}
-
 impl<'bucket> PutOptionsBuilder<'bucket> {
     /// Various HTTP headers associated with the object. Refer to [HttpMetadata].
     pub fn http_metadata(mut self, metadata: HttpMetadata) -> Self {
@@ -217,9 +212,9 @@ impl<'bucket> PutOptionsBuilder<'bucket> {
 
         let res: EdgeR2Object = fut.await?.into();
         let inner = if JsString::from("bodyUsed").js_in(&res) {
-            ObjectInner::Body(res.unchecked_into())
+            ObjectInner::Body(SendWrapper::new(res.unchecked_into()))
         } else {
-            ObjectInner::NoBody(res)
+            ObjectInner::NoBody(SendWrapper::new(res))
         };
 
         Ok(Object { inner })
@@ -233,9 +228,6 @@ pub struct CreateMultipartUploadOptionsBuilder<'bucket> {
     pub(crate) http_metadata: Option<HttpMetadata>,
     pub(crate) custom_metadata: Option<HashMap<String, String>>,
 }
-
-unsafe impl Send for CreateMultipartUploadOptionsBuilder<'_> {}
-unsafe impl Sync for CreateMultipartUploadOptionsBuilder<'_> {}
 
 impl<'bucket> CreateMultipartUploadOptionsBuilder<'bucket> {
     /// Various HTTP headers associated with the object. Refer to [HttpMetadata].
@@ -278,7 +270,9 @@ impl<'bucket> CreateMultipartUploadOptionsBuilder<'bucket> {
 
         let inner: EdgeR2MutipartUpload = fut.await?.into();
 
-        Ok(MultipartUpload { inner })
+        Ok(MultipartUpload {
+            inner: SendWrapper::new(inner),
+        })
     }
 }
 
@@ -336,9 +330,6 @@ pub struct ListOptionsBuilder<'bucket> {
     pub(crate) delimiter: Option<String>,
     pub(crate) include: Option<Vec<Include>>,
 }
-
-unsafe impl Send for ListOptionsBuilder<'_> {}
-unsafe impl Sync for ListOptionsBuilder<'_> {}
 
 impl<'bucket> ListOptionsBuilder<'bucket> {
     /// The number of results to return. Defaults to 1000, with a maximum of 1000.
@@ -417,7 +408,9 @@ impl<'bucket> ListOptionsBuilder<'bucket> {
         };
 
         let inner = fut.await?.into();
-        Ok(Objects { inner })
+        Ok(Objects {
+            inner: SendWrapper::new(inner),
+        })
     }
 }
 

@@ -6,9 +6,6 @@ pub enum RequestRedirect {
     Manual,
 }
 
-unsafe impl Send for RequestRedirect {}
-unsafe impl Sync for RequestRedirect {}
-
 impl From<RequestRedirect> for &str {
     fn from(redirect: RequestRedirect) -> Self {
         match redirect {

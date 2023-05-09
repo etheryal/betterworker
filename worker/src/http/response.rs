@@ -29,7 +29,7 @@ use crate::body::Body;
 /// ```
 ///
 /// [`Extensions`]: http::Extensions
-pub fn from_wasm(res: web_sys::Response) -> http::Response<Body> {
+pub fn from_web_sys_response(res: web_sys::Response) -> http::Response<Body> {
     let mut builder = http::Response::builder().status(res.status());
 
     for header in res.headers().entries() {
@@ -68,7 +68,7 @@ pub fn from_wasm(res: web_sys::Response) -> http::Response<Body> {
 /// ```
 ///
 /// [`Extensions`]: http::Extensions
-pub fn into_wasm(mut res: http::Response<Body>) -> web_sys::Response {
+pub fn into_web_sys_response(mut res: http::Response<Body>) -> web_sys::Response {
     let status = res.status().as_u16();
 
     let headers = web_sys::Headers::new().unwrap();

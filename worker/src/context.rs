@@ -1,22 +1,18 @@
 use std::future::Future;
 
+use send_wrapper::SendWrapper;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::future_to_promise;
 use worker_sys::Context as JsContext;
 
 /// A context bound to a `fetch` event.
 #[derive(Debug)]
-pub struct Context {
-    inner: JsContext,
-}
-
-unsafe impl Send for Context {}
-unsafe impl Sync for Context {}
+pub struct Context(SendWrapper<JsContext>);
 
 impl Context {
     /// Constructs a context from an underlying JavaScript context object.
     pub fn new(inner: JsContext) -> Self {
-        Self { inner }
+        Self(SendWrapper::new(inner))
     }
 
     /// Extends the lifetime of the "fetch" event which this context is bound to,
@@ -32,7 +28,7 @@ impl Context {
     where
         F: Future<Output = ()> + 'static,
     {
-        self.inner.wait_until(&future_to_promise(async {
+        self.0.wait_until(&future_to_promise(async {
             future.await;
             Ok(JsValue::UNDEFINED)
         }))
@@ -42,12 +38,12 @@ impl Context {
     /// Instead, the script will "fail open", which will proxy the request to the origin server
     /// as though the Worker was never invoked.
     pub fn pass_through_on_exception(&self) {
-        self.inner.pass_through_on_exception()
+        self.0.pass_through_on_exception()
     }
 }
 
 impl AsRef<JsContext> for Context {
     fn as_ref(&self) -> &JsContext {
-        &self.inner
+        &self.0
     }
 }

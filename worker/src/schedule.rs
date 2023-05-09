@@ -1,4 +1,5 @@
 use std::future::Future;
+use send_wrapper::SendWrapper;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::future_to_promise;
 use worker_sys::{ScheduleContext as EdgeScheduleContext, ScheduledEvent as EdgeScheduledEvent};
@@ -10,9 +11,6 @@ pub struct ScheduledEvent {
     scheduled_time: f64,
     ty: String,
 }
-
-unsafe impl Send for ScheduledEvent {}
-unsafe impl Sync for ScheduledEvent {}
 
 impl From<EdgeScheduledEvent> for ScheduledEvent {
     fn from(schedule: EdgeScheduledEvent) -> Self {
@@ -42,16 +40,11 @@ impl ScheduledEvent {
 }
 
 #[derive(Clone)]
-pub struct ScheduleContext {
-    edge: EdgeScheduleContext,
-}
-
-unsafe impl Send for ScheduleContext {}
-unsafe impl Sync for ScheduleContext {}
+pub struct ScheduleContext(SendWrapper<EdgeScheduleContext>);
 
 impl From<EdgeScheduleContext> for ScheduleContext {
     fn from(edge: EdgeScheduleContext) -> Self {
-        Self { edge }
+        Self(SendWrapper::new(edge))
     }
 }
 
@@ -60,7 +53,7 @@ impl ScheduleContext {
     where
         T: Future<Output = ()> + 'static,
     {
-        self.edge.wait_until(future_to_promise(async {
+        self.0.wait_until(future_to_promise(async {
             handler.await;
             Ok(JsValue::null())
         }))

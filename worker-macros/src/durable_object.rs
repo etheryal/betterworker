@@ -34,26 +34,40 @@ pub fn expand_macro(tokens: TokenStream) -> syn::Result<TokenStream> {
                         method.sig.ident = Ident::new("_new", method.sig.ident.span());
 
                         // modify the `state` argument so it is type ObjectState
-                        let arg_tokens = method.sig.inputs.first_mut().expect("DurableObject `new` method must have 2 arguments: state and env").into_token_stream();                        
-                        match syn::parse2::<FnArg>(arg_tokens)? {
-                            FnArg::Typed(pat) => {
-                                let path = syn::parse2::<TypePath>(quote!{worker_sys::DurableObjectState})?;
-                                let mut updated_pat = pat;
-                                updated_pat.ty = Box::new(Type::Path(path));
+                        let state_arg = method.sig.inputs.first_mut().expect("DurableObject `new` method must have 2 arguments: state and env").into_token_stream();                        
+                        let env_arg = method.sig.inputs.pop().expect("DurableObject `new` method expects a second argument: env").into_token_stream();
 
-                                let state_arg = FnArg::Typed(updated_pat);
-                                let env_arg = method.sig.inputs.pop().expect("DurableObject `new` method expects a second argument: env");
-                                method.sig.inputs.clear();
-                                method.sig.inputs.insert(0, state_arg);
-                                method.sig.inputs.insert(1, env_arg.into_value())
-                            },
-                            _ => return Err(Error::new(method.sig.inputs.span(), "DurableObject `new` method expects `state: State` as first argument."))
+                        let FnArg::Typed(mut state_pat) = syn::parse2::<FnArg>(state_arg)? else {
+                            return Err(Error::new(method.sig.inputs.span(), "DurableObject `new` method expects `state: State` as first argument."))
+                        };
+                        let FnArg::Typed(mut env_pat) = syn::parse2::<FnArg>(env_arg)? else {
+                            return Err(Error::new(method.sig.inputs.span(), "DurableObject `new` method expects `env: Env` as second argument."))
+                        };
+                        
+                        {
+                            let path = syn::parse2::<TypePath>(quote!{worker_sys::DurableObjectState})?;
+                            state_pat.ty = Box::new(Type::Path(path));
+
+                            let path = syn::parse2::<TypePath>(quote!{worker_sys::Env})?;
+                            env_pat.ty = Box::new(Type::Path(path));
                         }
 
+                        let state_name = state_pat.pat.clone();
+                        let env_name = env_pat.pat.clone();
+
+                        method.sig.inputs.clear();
+                        method.sig.inputs.insert(0, FnArg::Typed(state_pat));
+                        method.sig.inputs.insert(1, FnArg::Typed(env_pat));
+
                         // prepend the function block's statements to convert the ObjectState to State type
-                        let mut prepended = vec![syn::parse_quote! {
-                            let state = ::worker::durable::State::from(state);
-                        }];
+                        let mut prepended = vec![
+                            syn::parse_quote! {
+                                let state = ::worker::durable::State::from(#state_name);
+                            },
+                            syn::parse_quote! {
+                                let env = ::worker::Env::from(#env_name);
+                            },
+                        ];
                         prepended.extend(method.block.stmts);
                         method.block.stmts = prepended;
 
@@ -77,7 +91,7 @@ pub fn expand_macro(tokens: TokenStream) -> syn::Result<TokenStream> {
                                 let static_self: &'static mut Self = unsafe {&mut *(self as *mut _)};
 
                                 wasm_bindgen_futures::future_to_promise(async move {
-                                    static_self._fetch_raw(::worker::http::request::from_wasm(req)).await.map(::worker::http::response::into_wasm).map(wasm_bindgen::JsValue::from)
+                                    static_self._fetch_raw(::worker::http::request::from_web_sys_request(req)).await.map(::worker::http::response::into_web_sys_response).map(wasm_bindgen::JsValue::from)
                                         .map_err(wasm_bindgen::JsValue::from)
                                 })
                             }
@@ -102,7 +116,7 @@ pub fn expand_macro(tokens: TokenStream) -> syn::Result<TokenStream> {
                                 let static_self: &'static mut Self = unsafe {&mut *(self as *mut _)};
 
                                 wasm_bindgen_futures::future_to_promise(async move {
-                                    static_self._alarm_raw().await.map(::worker::http::response::into_wasm).map(wasm_bindgen::JsValue::from)
+                                    static_self._alarm_raw().await.map(::worker::http::response::into_web_sys_response).map(wasm_bindgen::JsValue::from)
                                         .map_err(wasm_bindgen::JsValue::from)
                                 })
                             }
@@ -129,7 +143,7 @@ pub fn expand_macro(tokens: TokenStream) -> syn::Result<TokenStream> {
                 #pound[async_trait::async_trait(?Send)]
                 impl ::worker::durable::DurableObject for #struct_name {
                     fn new(state: ::worker::durable::State, env: ::worker::Env) -> Self {
-                        Self::_new(state._inner(), env)
+                        Self::_new(state._inner(), env._inner())
                     }
 
                     async fn fetch(&mut self, req: ::worker::http::Request<::worker::body::Body>) -> ::worker::Result<::worker::http::Response<::worker::body::Body>> {

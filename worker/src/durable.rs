@@ -39,11 +39,8 @@ use wasm_bindgen_futures::future_to_promise;
 
 /// A Durable Object stub is a client object used to send requests to a remote Durable Object.
 pub struct Stub {
-    inner: EdgeDurableObject,
+    inner: SendWrapper<EdgeDurableObject>,
 }
-
-unsafe impl Send for Stub {}
-unsafe impl Sync for Stub {}
 
 impl Stub {
     /// Send an internal Request to the Durable Object to which the stub points.
@@ -52,14 +49,14 @@ impl Stub {
         req: http::Request<Body>,
     ) -> Result<http::Response<Body>> {
         let fut = {
-            let req = request::into_wasm(req);
+            let req = request::into_web_sys_request(req);
             let promise = self.inner.fetch_with_request(&req);
 
             SendJsFuture::from(promise)
         };
 
         let res = fut.await?.dyn_into()?;
-        Ok(response::from_wasm(res))
+        Ok(response::from_web_sys_response(res))
     }
 
     /// Construct a Request from a URL to the Durable Object to which the stub points.
@@ -70,7 +67,7 @@ impl Stub {
         };
 
         let res = fut.await?.dyn_into()?;
-        Ok(response::from_wasm(res))
+        Ok(response::from_web_sys_response(res))
     }
 }
 
@@ -107,8 +104,8 @@ impl ObjectNamespace {
             .id_from_name(name)
             .map_err(Error::from)
             .map(|id| ObjectId {
-                inner: id,
-                namespace: Some(self),
+                inner: SendWrapper::new(id),
+                namespace: Some(SendWrapper::new(self)),
             })
     }
 
@@ -125,8 +122,8 @@ impl ObjectNamespace {
             .id_from_string(hex_id)
             .map_err(Error::from)
             .map(|id| ObjectId {
-                inner: id,
-                namespace: Some(self),
+                inner: SendWrapper::new(id),
+                namespace: Some(SendWrapper::new(self)),
             })
     }
 
@@ -138,8 +135,8 @@ impl ObjectNamespace {
             .new_unique_id()
             .map_err(Error::from)
             .map(|id| ObjectId {
-                inner: id,
-                namespace: Some(self),
+                inner: SendWrapper::new(id),
+                namespace: Some(SendWrapper::new(self)),
             })
     }
 
@@ -159,8 +156,8 @@ impl ObjectNamespace {
             .new_unique_id_with_options(&options)
             .map_err(Error::from)
             .map(|id| ObjectId {
-                inner: id,
-                namespace: Some(self),
+                inner: SendWrapper::new(id),
+                namespace: Some(SendWrapper::new(self)),
             })
     }
 }
@@ -168,21 +165,19 @@ impl ObjectNamespace {
 /// An ObjectId is used to identify, locate, and access a Durable Object via interaction with its
 /// Stub.
 pub struct ObjectId<'a> {
-    inner: DurableObjectId,
-    namespace: Option<&'a ObjectNamespace>,
+    inner: SendWrapper<DurableObjectId>,
+    namespace: Option<SendWrapper<&'a ObjectNamespace>>,
 }
-
-unsafe impl Send for ObjectId<'_> {}
-unsafe impl Sync for ObjectId<'_> {}
 
 impl ObjectId<'_> {
     /// Get a Stub for the Durable Object instance identified by this ObjectId.
     pub fn get_stub(&self) -> Result<Stub> {
         self.namespace
+            .as_ref()
             .ok_or_else(|| JsValue::from("Cannot get stub from within a Durable Object"))
             .and_then(|n| {
                 Ok(Stub {
-                    inner: n.0.get(&self.inner)?,
+                    inner: SendWrapper::new(n.0.get(&self.inner)?),
                 })
             })
             .map_err(Error::from)
@@ -201,15 +196,12 @@ pub struct State {
     inner: DurableObjectState,
 }
 
-unsafe impl Send for State {}
-unsafe impl Sync for State {}
-
 impl State {
     /// The ID of this Durable Object which can be converted into a hex string using its `to_string()`
     /// method.
     pub fn id(&self) -> ObjectId<'_> {
         ObjectId {
-            inner: self.inner.id(),
+            inner: SendWrapper::new(self.inner.id()),
             namespace: None,
         }
     }
@@ -218,7 +210,7 @@ impl State {
     /// [Transactional Storage API](https://developers.cloudflare.com/workers/runtime-apis/durable-objects#transactional-storage-api) for a detailed reference.
     pub fn storage(&self) -> Storage {
         Storage {
-            inner: self.inner.storage(),
+            inner: SendWrapper::new(self.inner.storage()),
         }
     }
 
@@ -232,7 +224,7 @@ impl State {
         }))
     }
 
-    // needs to be accessed by the `durable_object` macro in a conversion step
+    #[doc(hidden)]
     pub fn _inner(self) -> DurableObjectState {
         self.inner
     }
@@ -248,11 +240,8 @@ impl From<DurableObjectState> for State {
 /// such that its results are atomic and isolated from all other storage operations, even when
 /// accessing multiple key-value pairs.
 pub struct Storage {
-    inner: DurableObjectStorage,
+    inner: SendWrapper<DurableObjectStorage>,
 }
-
-unsafe impl Send for Storage {}
-unsafe impl Sync for Storage {}
 
 impl Storage {
     /// Retrieves the value associated with the given key. The type of the returned value will be
@@ -460,11 +449,8 @@ impl Storage {
 
 #[allow(dead_code)]
 struct Transaction {
-    inner: DurableObjectTransaction,
+    inner: SendWrapper<DurableObjectTransaction>,
 }
-
-unsafe impl Send for Transaction {}
-unsafe impl Sync for Transaction {}
 
 #[allow(dead_code)]
 impl Transaction {
@@ -642,21 +628,18 @@ enum ScheduledTimeInit {
 /// When an offset is used, the time at which `set_alarm()` or `set_alarm_with_options()` is called
 /// is used to compute the scheduled time. [`Date::now`] is used as the current time.
 pub struct ScheduledTime {
-    init: ScheduledTimeInit,
+    init: SendWrapper<ScheduledTimeInit>,
 }
-
-unsafe impl Send for ScheduledTime {}
-unsafe impl Sync for ScheduledTime {}
 
 impl ScheduledTime {
     pub fn new(date: js_sys::Date) -> Self {
         Self {
-            init: ScheduledTimeInit::Date(date),
+            init: SendWrapper::new(ScheduledTimeInit::Date(date)),
         }
     }
 
     fn schedule(self) -> js_sys::Date {
-        match self.init {
+        match self.init.take() {
             ScheduledTimeInit::Date(date) => date,
             ScheduledTimeInit::Offset(offset) => {
                 let now = Date::now().as_millis() as f64;
@@ -669,7 +652,7 @@ impl ScheduledTime {
 impl From<i64> for ScheduledTime {
     fn from(offset: i64) -> Self {
         ScheduledTime {
-            init: ScheduledTimeInit::Offset(offset as f64),
+            init: SendWrapper::new(ScheduledTimeInit::Offset(offset as f64)),
         }
     }
 }
@@ -677,9 +660,9 @@ impl From<i64> for ScheduledTime {
 impl From<DateTime<Utc>> for ScheduledTime {
     fn from(date: DateTime<Utc>) -> Self {
         ScheduledTime {
-            init: ScheduledTimeInit::Date(js_sys::Date::new(&Number::from(
+            init: SendWrapper::new(ScheduledTimeInit::Date(js_sys::Date::new(&Number::from(
                 date.timestamp_millis() as f64,
-            ))),
+            )))),
         }
     }
 }
@@ -687,7 +670,7 @@ impl From<DateTime<Utc>> for ScheduledTime {
 impl From<Duration> for ScheduledTime {
     fn from(offset: Duration) -> Self {
         ScheduledTime {
-            init: ScheduledTimeInit::Offset(offset.as_millis() as f64),
+            init: SendWrapper::new(ScheduledTimeInit::Offset(offset.as_millis() as f64)),
         }
     }
 }

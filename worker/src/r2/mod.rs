@@ -1,4 +1,7 @@
-use std::{collections::HashMap, convert::{TryInto, TryFrom}};
+use std::{
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+};
 
 pub use builder::*;
 
@@ -33,7 +36,7 @@ impl Bucket {
         }
 
         Ok(Some(Object {
-            inner: ObjectInner::NoBody(value.into()),
+            inner: ObjectInner::NoBody(SendWrapper::new(value.into())),
         }))
     }
 
@@ -121,10 +124,11 @@ impl Bucket {
         upload_id: impl Into<String>,
     ) -> Result<MultipartUpload> {
         Ok(MultipartUpload {
-            inner: self
-                .0
-                .resume_multipart_upload(key.into(), upload_id.into())
-                .into(),
+            inner: SendWrapper::new(
+                self.0
+                    .resume_multipart_upload(key.into(), upload_id.into())
+                    .into(),
+            ),
         })
     }
 }
@@ -155,9 +159,6 @@ impl From<Bucket> for JsValue {
 pub struct Object {
     inner: ObjectInner,
 }
-
-unsafe impl Send for Object {}
-unsafe impl Sync for Object {}
 
 impl Object {
     pub fn key(&self) -> String {
@@ -274,9 +275,6 @@ pub struct ObjectBody<'body> {
     inner: &'body EdgeR2ObjectBody,
 }
 
-unsafe impl Send for ObjectBody<'_> {}
-unsafe impl Sync for ObjectBody<'_> {}
-
 impl<'body> ObjectBody<'body> {
     /// Reads the data in the [Object] via a [ByteStream].
     pub fn stream(self) -> Result<ByteStream> {
@@ -287,7 +285,7 @@ impl<'body> ObjectBody<'body> {
         let stream = self.inner.body();
         let stream = wasm_streams::ReadableStream::from_raw(stream.unchecked_into());
         Ok(ByteStream {
-            inner: stream.into_stream(),
+            inner: SendWrapper::new(stream.into_stream()),
         })
     }
 
@@ -311,11 +309,8 @@ impl<'body> ObjectBody<'body> {
 /// [UploadedPart] objects are returned from [upload_part](MultipartUpload::upload_part) operations
 /// and must be passed to the [complete](MultipartUpload::complete) operation.
 pub struct UploadedPart {
-    inner: EdgeR2UploadedPart,
+    inner: SendWrapper<EdgeR2UploadedPart>,
 }
-
-unsafe impl Send for UploadedPart {}
-unsafe impl Sync for UploadedPart {}
 
 impl UploadedPart {
     pub fn part_number(&self) -> u16 {
@@ -328,11 +323,8 @@ impl UploadedPart {
 }
 
 pub struct MultipartUpload {
-    inner: EdgeR2MultipartUpload,
+    inner: SendWrapper<EdgeR2MultipartUpload>,
 }
-
-unsafe impl Send for MultipartUpload {}
-unsafe impl Sync for MultipartUpload {}
 
 impl MultipartUpload {
     /// Uploads a single part with the specified part number to this multipart upload.
@@ -356,7 +348,7 @@ impl MultipartUpload {
         let uploaded_part = fut.await?;
 
         Ok(UploadedPart {
-            inner: uploaded_part.into(),
+            inner: SendWrapper::new(uploaded_part.into()),
         })
     }
 
@@ -377,25 +369,22 @@ impl MultipartUpload {
             self.inner.complete(
                 uploaded_parts
                     .into_iter()
-                    .map(|part| part.inner.into())
+                    .map(|part| part.inner.take().into())
                     .collect(),
             ),
         );
         let object = fut.await?;
 
         Ok(Object {
-            inner: ObjectInner::Body(object.into()),
+            inner: ObjectInner::Body(SendWrapper::new(object.into())),
         })
     }
 }
 
 /// A series of [Object]s returned by [list](Bucket::list).
 pub struct Objects {
-    inner: EdgeR2Objects,
+    inner: SendWrapper<EdgeR2Objects>,
 }
-
-unsafe impl Send for Objects {}
-unsafe impl Sync for Objects {}
 
 impl Objects {
     /// An [Vec] of [Object] matching the [list](Bucket::list) request.
@@ -404,7 +393,7 @@ impl Objects {
             .objects()
             .into_iter()
             .map(|raw| Object {
-                inner: ObjectInner::NoBody(raw),
+                inner: ObjectInner::NoBody(SendWrapper::new(raw)),
             })
             .collect()
     }
@@ -438,12 +427,9 @@ impl Objects {
 
 #[derive(Clone)]
 pub(crate) enum ObjectInner {
-    NoBody(EdgeR2Object),
-    Body(EdgeR2ObjectBody),
+    NoBody(SendWrapper<EdgeR2Object>),
+    Body(SendWrapper<EdgeR2ObjectBody>),
 }
-
-unsafe impl Send for ObjectInner {}
-unsafe impl Sync for ObjectInner {}
 
 pub enum Data {
     Stream(FixedLengthStream),

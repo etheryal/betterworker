@@ -9,7 +9,7 @@ pub struct AlarmObject {
 
 #[durable_object]
 impl DurableObject for AlarmObject {
-    fn new(state: State, _: Env) -> Self {
+    fn new(state: State, _env: Env) -> Self {
         Self { state }
     }
 

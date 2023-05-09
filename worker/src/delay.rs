@@ -29,9 +29,6 @@ pub struct Delay {
     awoken: Rc<Cell<bool>>,
 }
 
-unsafe impl Send for Delay {}
-unsafe impl Sync for Delay {}
-
 impl Future for Delay {
     type Output = ();
 

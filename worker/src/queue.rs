@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, convert::TryFrom};
+use std::{convert::TryFrom, marker::PhantomData};
 
 use crate::{futures::SendJsFuture, Date, Error, Result};
 use js_sys::Array;
@@ -11,7 +11,7 @@ static BODY_KEY_STR: &str = "body";
 static ID_KEY_STR: &str = "id";
 static TIMESTAMP_KEY_STR: &str = "timestamp";
 
-pub struct MessageBatch<T> {
+struct MessageBatchInner<T> {
     inner: MessageBatchSys,
     messages: Array,
     data: PhantomData<T>,
@@ -20,22 +20,22 @@ pub struct MessageBatch<T> {
     id_key: JsValue,
 }
 
-unsafe impl<T> Send for MessageBatch<T> {}
-unsafe impl<T> Sync for MessageBatch<T> {}
+pub struct MessageBatch<T>(SendWrapper<MessageBatchInner<T>>);
 
 impl<T> MessageBatch<T> {
     pub fn new(message_batch_sys: MessageBatchSys) -> Self {
         let timestamp_key = JsValue::from_str(TIMESTAMP_KEY_STR);
         let body_key = JsValue::from_str(BODY_KEY_STR);
         let id_key = JsValue::from_str(ID_KEY_STR);
-        Self {
+        let inner = MessageBatchInner {
             messages: message_batch_sys.messages(),
             inner: message_batch_sys,
             data: PhantomData,
             timestamp_key,
             body_key,
             id_key,
-        }
+        };
+        Self(SendWrapper::new(inner))
     }
 }
 
@@ -45,18 +45,15 @@ pub struct Message<T> {
     pub id: String,
 }
 
-unsafe impl<T> Send for Message<T> {}
-unsafe impl<T> Sync for Message<T> {}
-
 impl<T> MessageBatch<T> {
     /// The name of the Queue that belongs to this batch.
     pub fn queue(&self) -> String {
-        self.inner.queue()
+        self.0.inner.queue()
     }
 
     /// Marks every message to be retried in the next batch.
     pub fn retry_all(&self) {
-        self.inner.retry_all();
+        self.0.inner.retry_all();
     }
 
     /// Iterator that deserializes messages in the message batch. Ordering of messages is not guaranteed.
@@ -64,14 +61,15 @@ impl<T> MessageBatch<T> {
     where
         T: DeserializeOwned,
     {
-        MessageIter {
-            range: 0..self.messages.length(),
-            array: &self.messages,
-            timestamp_key: &self.timestamp_key,
-            body_key: &self.body_key,
-            id_key: &self.id_key,
+        let inner = MessageIterInner {
+            range: 0..self.0.messages.length(),
+            array: &self.0.messages,
+            timestamp_key: &self.0.timestamp_key,
+            body_key: &self.0.body_key,
+            id_key: &self.0.id_key,
             data: PhantomData,
-        }
+        };
+        MessageIter(SendWrapper::new(inner))
     }
 
     /// An array of messages in the batch. Ordering of messages is not guaranteed.
@@ -83,7 +81,7 @@ impl<T> MessageBatch<T> {
     }
 }
 
-pub struct MessageIter<'a, T> {
+struct MessageIterInner<'a, T> {
     range: std::ops::Range<u32>,
     array: &'a Array,
     timestamp_key: &'a JsValue,
@@ -92,21 +90,21 @@ pub struct MessageIter<'a, T> {
     data: PhantomData<T>,
 }
 
-unsafe impl<T> Send for MessageIter<'_, T> {}
-unsafe impl<T> Sync for MessageIter<'_, T> {}
+pub struct MessageIter<'a, T>(SendWrapper<MessageIterInner<'a, T>>);
 
 impl<T> MessageIter<'_, T>
 where
     T: DeserializeOwned,
 {
     fn parse_message(&self, message: &JsValue) -> Result<Message<T>> {
-        let date = js_sys::Date::from(js_sys::Reflect::get(message, self.timestamp_key)?);
-        let id = js_sys::Reflect::get(message, self.id_key)?
+        let date = js_sys::Date::from(js_sys::Reflect::get(message, self.0.timestamp_key)?);
+        let id = js_sys::Reflect::get(message, self.0.id_key)?
             .as_string()
             .ok_or(Error::JsError(
                 "Invalid message batch. Failed to get id from message.".to_string(),
             ))?;
-        let body = serde_wasm_bindgen::from_value(js_sys::Reflect::get(message, self.body_key)?)?;
+        let body =
+            serde_wasm_bindgen::from_value(js_sys::Reflect::get(message, self.0.body_key)?)?;
 
         Ok(Message {
             id,
@@ -123,16 +121,14 @@ where
     type Item = Result<Message<T>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let index = self.range.next()?;
-
-        let value = self.array.get(index);
-
+        let index = self.0.range.next()?;
+        let value = self.0.array.get(index);
         Some(self.parse_message(&value))
     }
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.range.size_hint()
+        self.0.range.size_hint()
     }
 }
 
@@ -141,8 +137,8 @@ where
     T: DeserializeOwned,
 {
     fn next_back(&mut self) -> Option<Self::Item> {
-        let index = self.range.next_back()?;
-        let value = self.array.get(index);
+        let index = self.0.range.next_back()?;
+        let value = self.0.array.get(index);
 
         Some(self.parse_message(&value))
     }
