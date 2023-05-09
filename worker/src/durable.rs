@@ -10,12 +10,12 @@
 //! [Learn more](https://developers.cloudflare.com/workers/learning/using-durable-objects) about
 //! using Durable Objects.
 
-use std::{ops::Deref, time::Duration};
+use std::{convert::TryFrom, ops::Deref, time::Duration};
 
 use crate::{
     body::Body,
     date::Date,
-    env::{Env, EnvBinding},
+    env::Env,
     error::Error,
     futures::SendJsFuture,
     http::{request, response},
@@ -24,7 +24,9 @@ use crate::{
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use futures_util::Future;
 use js_sys::{Map, Number, Object};
+use send_wrapper::SendWrapper;
 use serde::{de::DeserializeOwned, Serialize};
 use wasm_bindgen::{prelude::*, JsCast};
 use worker_sys::{
@@ -32,6 +34,8 @@ use worker_sys::{
     DurableObjectNamespace as EdgeObjectNamespace, DurableObjectState, DurableObjectStorage,
     DurableObjectTransaction,
 };
+// use wasm_bindgen_futures::future_to_promise;
+use wasm_bindgen_futures::future_to_promise;
 
 /// A Durable Object stub is a client object used to send requests to a remote Durable Object.
 pub struct Stub {
@@ -73,18 +77,33 @@ impl Stub {
 /// Use an ObjectNamespace to get access to Stubs for communication with a Durable Object instance.
 /// A given namespace can support essentially unlimited Durable Objects, with each Object having
 /// access to a transactional, key-value storage API.
-pub struct ObjectNamespace {
-    inner: EdgeObjectNamespace,
+pub struct ObjectNamespace(SendWrapper<EdgeObjectNamespace>);
+
+impl TryFrom<JsValue> for ObjectNamespace {
+    type Error = Error;
+
+    fn try_from(val: JsValue) -> Result<Self> {
+        Ok(Self(SendWrapper::new(val.dyn_into()?)))
+    }
 }
 
-unsafe impl Send for ObjectNamespace {}
-unsafe impl Sync for ObjectNamespace {}
+impl From<ObjectNamespace> for JsValue {
+    fn from(ns: ObjectNamespace) -> Self {
+        JsValue::from(ns.0.take())
+    }
+}
+
+impl AsRef<JsValue> for ObjectNamespace {
+    fn as_ref(&self) -> &JsValue {
+        &self.0
+    }
+}
 
 impl ObjectNamespace {
     /// This method derives a unique object ID from the given name string. It will always return the
     /// same ID when given the same name as input.
     pub fn id_from_name(&self, name: &str) -> Result<ObjectId> {
-        self.inner
+        self.0
             .id_from_name(name)
             .map_err(Error::from)
             .map(|id| ObjectId {
@@ -102,7 +121,7 @@ impl ObjectNamespace {
     /// created by newUniqueId() or idFromName(). It will also throw if the ID was originally
     /// created for a different namespace.
     pub fn id_from_string(&self, hex_id: &str) -> Result<ObjectId> {
-        self.inner
+        self.0
             .id_from_string(hex_id)
             .map_err(Error::from)
             .map(|id| ObjectId {
@@ -115,7 +134,7 @@ impl ObjectNamespace {
     /// it is guaranteed that the object does not yet exist and has never existed at the time the
     /// method returns.
     pub fn unique_id(&self) -> Result<ObjectId> {
-        self.inner
+        self.0
             .new_unique_id()
             .map_err(Error::from)
             .map(|id| ObjectId {
@@ -136,7 +155,7 @@ impl ObjectNamespace {
     pub fn unique_id_with_jurisdiction(&self, jd: &str) -> Result<ObjectId> {
         let options = Object::new();
         js_sys::Reflect::set(&options, &JsValue::from("jurisdiction"), &jd.into())?;
-        self.inner
+        self.0
             .new_unique_id_with_options(&options)
             .map_err(Error::from)
             .map(|id| ObjectId {
@@ -163,7 +182,7 @@ impl ObjectId<'_> {
             .ok_or_else(|| JsValue::from("Cannot get stub from within a Durable Object"))
             .and_then(|n| {
                 Ok(Stub {
-                    inner: n.inner.get(&self.inner)?,
+                    inner: n.0.get(&self.inner)?,
                 })
             })
             .map_err(Error::from)
@@ -203,6 +222,16 @@ impl State {
         }
     }
 
+    pub fn wait_until<F>(&self, future: F)
+    where
+        F: Future<Output = ()> + 'static,
+    {
+        self.inner.wait_until(&future_to_promise(async {
+            future.await;
+            Ok(JsValue::UNDEFINED)
+        }))
+    }
+
     // needs to be accessed by the `durable_object` macro in a conversion step
     pub fn _inner(self) -> DurableObjectState {
         self.inner
@@ -227,7 +256,9 @@ unsafe impl Sync for Storage {}
 
 impl Storage {
     /// Retrieves the value associated with the given key. The type of the returned value will be
-    /// whatever was previously written for the key, or undefined if the key does not exist.
+    /// whatever was previously written for the key.
+    ///
+    /// Returns [Err] if the key does not exist.
     pub async fn get<T: serde::de::DeserializeOwned>(&self, key: &str) -> Result<T> {
         let fut = SendJsFuture::from(self.inner.get(key)?);
         fut.await
@@ -675,43 +706,13 @@ pub struct SetAlarmOptions {
     pub allow_unconfirmed: Option<bool>,
 }
 
-impl EnvBinding for ObjectNamespace {
-    const TYPE_NAME: &'static str = "DurableObjectNamespace";
-}
-
-impl JsCast for ObjectNamespace {
-    fn instanceof(val: &JsValue) -> bool {
-        val.is_instance_of::<EdgeObjectNamespace>()
-    }
-
-    fn unchecked_from_js(val: JsValue) -> Self {
-        Self { inner: val.into() }
-    }
-
-    fn unchecked_from_js_ref(val: &JsValue) -> &Self {
-        unsafe { &*(val as *const JsValue as *const Self) }
-    }
-}
-
-impl From<ObjectNamespace> for JsValue {
-    fn from(ns: ObjectNamespace) -> Self {
-        JsValue::from(ns.inner)
-    }
-}
-
-impl AsRef<JsValue> for ObjectNamespace {
-    fn as_ref(&self) -> &JsValue {
-        &self.inner
-    }
-}
-
 /**
 **Note:** Implement this trait with a standard `impl DurableObject for YourType` block, but in order to
 integrate them with the Workers Runtime, you must also add the **`#[durable_object]`** attribute
 macro to both the impl block and the struct type definition.
 
 ## Example
-```no_run
+```ignore
 use worker::*;
 
 #[durable_object]

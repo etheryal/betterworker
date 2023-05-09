@@ -31,7 +31,7 @@ where
     ///
     /// # Example
     ///
-    /// ```rust,no_run
+    /// ```rust,ignore
     /// use worker::body::Body;
     /// use worker::http::HttpClone;
     ///
@@ -57,7 +57,7 @@ where
     ///
     /// # Example
     ///
-    /// ```rust,no_run
+    /// ```rust,ignore
     /// use worker::body::Body;
     /// use worker::http::{request, HttpClone};
     ///

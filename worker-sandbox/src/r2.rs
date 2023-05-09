@@ -185,8 +185,6 @@ pub async fn put_properties(env: &Env) -> Result<Response<Body>> {
 
 pub async fn put_multipart(env: &Env) -> Result<Response<Body>> {
     const R2_MULTIPART_CHUNK_MIN_SIZE: usize = 5 * 1_024 * 1_024; // 5MiB.
-    const TEST_CHUNK_COUNT: usize = 3;
-
     let bucket = env.bucket("PUT_BUCKET")?;
 
     let upload = bucket

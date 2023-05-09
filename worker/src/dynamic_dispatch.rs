@@ -1,7 +1,10 @@
+use std::convert::TryFrom;
+
+use send_wrapper::SendWrapper;
 use wasm_bindgen::{JsCast, JsValue};
 use worker_sys::DynamicDispatcher as DynamicDispatcherSys;
 
-use crate::{env::EnvBinding, Fetcher, Result};
+use crate::{Fetcher, Result};
 
 /// A binding for dispatching events to Workers inside of a dispatch namespace by their name. This
 /// allows for your worker to directly invoke many workers by name instead of having multiple
@@ -9,16 +12,13 @@ use crate::{env::EnvBinding, Fetcher, Result};
 ///
 /// # Example:
 ///
-/// ```no_run
+/// ```ignore
 /// let dispatcher = env.dynamic_dispatcher("DISPATCHER")?;
 /// let fetcher = dispatcher.get("namespaced-worker-name")?;
 /// let resp = fetcher.fetch_request(req).await?;
 /// ```
 #[derive(Debug, Clone)]
-pub struct DynamicDispatcher(DynamicDispatcherSys);
-
-unsafe impl Send for DynamicDispatcher {}
-unsafe impl Sync for DynamicDispatcher {}
+pub struct DynamicDispatcher(SendWrapper<DynamicDispatcherSys>);
 
 impl DynamicDispatcher {
     /// Gets a [Fetcher] for a Worker inside of the dispatch namespace based of the name specified.
@@ -28,38 +28,22 @@ impl DynamicDispatcher {
     }
 }
 
-impl EnvBinding for DynamicDispatcher {
-    const TYPE_NAME: &'static str = "DynamicDispatcher";
-}
-
-impl JsCast for DynamicDispatcher {
-    fn instanceof(val: &JsValue) -> bool {
-        val.is_string()
-    }
-
-    fn unchecked_from_js(val: JsValue) -> Self {
-        DynamicDispatcher(val.unchecked_into())
-    }
-
-    fn unchecked_from_js_ref(val: &JsValue) -> &Self {
-        unsafe { &*(val as *const JsValue as *const Self) }
-    }
-}
-
 impl AsRef<JsValue> for DynamicDispatcher {
     fn as_ref(&self) -> &wasm_bindgen::JsValue {
         &self.0
     }
 }
 
-impl From<JsValue> for DynamicDispatcher {
-    fn from(val: JsValue) -> Self {
-        DynamicDispatcher(val.unchecked_into())
+impl TryFrom<JsValue> for DynamicDispatcher {
+    type Error = crate::Error;
+
+    fn try_from(val: JsValue) -> Result<Self> {
+        Ok(Self(SendWrapper::new(val.dyn_into()?)))
     }
 }
 
 impl From<DynamicDispatcher> for JsValue {
-    fn from(sec: DynamicDispatcher) -> Self {
-        sec.0.into()
+    fn from(ns: DynamicDispatcher) -> Self {
+        JsValue::from(ns.0.take())
     }
 }

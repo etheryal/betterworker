@@ -1,8 +1,9 @@
-use std::{collections::HashMap, convert::TryInto};
+use std::{collections::HashMap, convert::{TryInto, TryFrom}};
 
 pub use builder::*;
 
 use js_sys::{JsString, Reflect, Uint8Array};
+use send_wrapper::SendWrapper;
 use wasm_bindgen::{JsCast, JsValue};
 use worker_sys::{
     FixedLengthStream as EdgeFixedLengthStream, R2Bucket as EdgeR2Bucket,
@@ -11,25 +12,18 @@ use worker_sys::{
     R2UploadedPart as EdgeR2UploadedPart,
 };
 
-use crate::{
-    env::EnvBinding, futures::SendJsFuture, ByteStream, Date, Error, FixedLengthStream, Result,
-};
+use crate::{futures::SendJsFuture, ByteStream, Date, Error, FixedLengthStream, Result};
 
 mod builder;
 
 /// An instance of the R2 bucket binding.
-pub struct Bucket {
-    inner: EdgeR2Bucket,
-}
-
-unsafe impl Send for Bucket {}
-unsafe impl Sync for Bucket {}
+pub struct Bucket(SendWrapper<EdgeR2Bucket>);
 
 impl Bucket {
     /// Retrieves the [Object] for the given key containing only object metadata, if the key exists.
     pub async fn head(&self, key: impl Into<String>) -> Result<Option<Object>> {
         let fut = {
-            let head_promise = self.inner.head(key.into());
+            let head_promise = self.0.head(key.into());
             SendJsFuture::from(head_promise)
         };
         let value = fut.await?;
@@ -48,7 +42,7 @@ impl Bucket {
     /// an [Object] with no body.
     pub fn get(&self, key: impl Into<String>) -> GetOptionsBuilder {
         GetOptionsBuilder {
-            edge_bucket: &self.inner,
+            edge_bucket: &self.0,
             key: key.into(),
             only_if: None,
             range: None,
@@ -62,7 +56,7 @@ impl Bucket {
     /// will see this key value pair globally.
     pub fn put(&self, key: impl Into<String>, value: impl Into<Data>) -> PutOptionsBuilder {
         PutOptionsBuilder {
-            edge_bucket: &self.inner,
+            edge_bucket: &self.0,
             key: key.into(),
             value: value.into(),
             http_metadata: None,
@@ -78,7 +72,7 @@ impl Bucket {
     /// operations will no longer see this key value pair globally.
     pub async fn delete(&self, key: impl Into<String>) -> Result<()> {
         let fut = {
-            let delete_promise = self.inner.delete(key.into());
+            let delete_promise = self.0.delete(key.into());
             SendJsFuture::from(delete_promise)
         };
 
@@ -90,7 +84,7 @@ impl Bucket {
     /// default, returns the first 1000 entries.
     pub fn list(&self) -> ListOptionsBuilder {
         ListOptionsBuilder {
-            edge_bucket: &self.inner,
+            edge_bucket: &self.0,
             limit: None,
             prefix: None,
             cursor: None,
@@ -109,7 +103,7 @@ impl Bucket {
         key: impl Into<String>,
     ) -> CreateMultipartUploadOptionsBuilder {
         CreateMultipartUploadOptionsBuilder {
-            edge_bucket: &self.inner,
+            edge_bucket: &self.0,
             key: key.into(),
             http_metadata: None,
             custom_metadata: None,
@@ -128,40 +122,30 @@ impl Bucket {
     ) -> Result<MultipartUpload> {
         Ok(MultipartUpload {
             inner: self
-                .inner
+                .0
                 .resume_multipart_upload(key.into(), upload_id.into())
                 .into(),
         })
     }
 }
 
-impl EnvBinding for Bucket {
-    const TYPE_NAME: &'static str = "R2Bucket";
+impl AsRef<JsValue> for Bucket {
+    fn as_ref(&self) -> &JsValue {
+        &self.0
+    }
 }
 
-impl JsCast for Bucket {
-    fn instanceof(val: &JsValue) -> bool {
-        val.is_instance_of::<EdgeR2Bucket>()
-    }
+impl TryFrom<JsValue> for Bucket {
+    type Error = Error;
 
-    fn unchecked_from_js(val: JsValue) -> Self {
-        Self { inner: val.into() }
-    }
-
-    fn unchecked_from_js_ref(val: &JsValue) -> &Self {
-        unsafe { &*(val as *const JsValue as *const Self) }
+    fn try_from(val: JsValue) -> Result<Self> {
+        Ok(Self(SendWrapper::new(val.dyn_into()?)))
     }
 }
 
 impl From<Bucket> for JsValue {
-    fn from(bucket: Bucket) -> Self {
-        JsValue::from(bucket.inner)
-    }
-}
-
-impl AsRef<JsValue> for Bucket {
-    fn as_ref(&self) -> &JsValue {
-        &self.inner
+    fn from(ns: Bucket) -> Self {
+        JsValue::from(ns.0.take())
     }
 }
 

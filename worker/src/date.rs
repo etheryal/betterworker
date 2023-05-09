@@ -3,7 +3,7 @@ use chrono::Datelike;
 use wasm_bindgen::JsValue;
 
 /// The equivalent to a JavaScript `Date` Object.
-/// ```no_run
+/// ```ignore
 /// let now = Date::now();
 /// let millis = now.as_millis();
 /// // or use a specific point in time:
@@ -25,7 +25,7 @@ impl PartialEq for Date {
 }
 
 /// Initialize a `Date` by constructing this enum.
-/// ```no_run
+/// ```ignore
 /// let t1: Date = DateInit::Millis(1630611511000).into();
 /// let t2: Date = DateInit::String("Thu, 02 Sep 2021 19:38:31 GMT".to_string()).into();
 /// ```

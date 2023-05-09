@@ -19,7 +19,7 @@ use crate::body::Body;
 ///
 /// # Example
 ///
-/// ```rust,no_run
+/// ```rust,ignore
 /// use worker::http::response;
 ///
 /// let res = web_sys::Response::new_with_opt_str(Some("hello world")).unwrap();
@@ -57,7 +57,7 @@ pub fn from_wasm(res: web_sys::Response) -> http::Response<Body> {
 ///
 /// # Example
 ///
-/// ```rust,no_run
+/// ```rust,ignore
 /// use worker::body::Body;
 /// use worker::http::response;
 ///

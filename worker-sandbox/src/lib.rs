@@ -64,6 +64,19 @@ fn handle_a_request(req: http::Request<body::Body>) -> http::Response<body::Body
     )
 }
 
+#[derive(Deserialize, Serialize, Eq, PartialEq, Debug)]
+pub struct Person {
+    pub id: i64,
+    pub name: String,
+    pub age: i32,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct CreatePerson {
+    pub name: String,
+    pub age: i32,
+}
+
 async fn test_clone_req(mut req: http::Request<body::Body>) -> body::Bytes {
     // Change version to something non-default
     *req.version_mut() = http::Version::HTTP_3;
@@ -410,6 +423,48 @@ pub async fn main(
 
             // Let the integration tests have some way of knowing if we successfully received the closed event.
             http::Response::new(got_close_event.into())
+        }
+        (Method::POST, "/d1/exec") => {
+            let d1 = env.d1("DB")?;
+            let query = req.into_body().text().await?;
+            let exec_result = d1.exec(&query).await;
+            match exec_result {
+                Ok(result) => {
+                    let count = result.count().unwrap_or_default();
+                    http::Response::new(format!("{}", count).into())
+                }
+                Err(err) => http::Response::builder()
+                    .status(http::StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(format!("Exec failed - {}", err).into())
+                    .unwrap(),
+            }
+        }
+        (Method::GET, "/d1/people") => {
+            let d1: Database = env.d1("DB")?;
+            let people: Vec<Person> = d1
+                .prepare("select * from people;")
+                .all()
+                .await?
+                .results()?;
+            http::Response::new(serde_json::to_string(&people).unwrap().into())
+        }
+        (Method::POST, "/d1/people") => {
+            let create_person: CreatePerson =
+                serde_json::from_str(req.into_body().text().await?.as_str()).unwrap();
+            let d1: Database = env.d1("DB")?;
+            let new_person = d1
+                .prepare(
+                    "insert into people (name, age) values(?, ?) returning *;",
+                )
+                .bind(&[
+                    create_person.name.to_string().into(),
+                    create_person.age.into(),
+                ])
+                .unwrap()
+                .first::<Person>(None)
+                .await?
+                .unwrap();
+            http::Response::new(serde_json::to_string(&new_person).unwrap().into())
         }
         _ => panic!("unknown uri {}", req.uri()),
     };

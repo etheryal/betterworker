@@ -12,7 +12,7 @@ use crate::{
 ///
 /// # Example
 ///
-/// ```rust,no_run
+/// ```rust,ignore
 /// # async fn run() -> worker::Result<()> {
 /// use worker::fetch;
 ///

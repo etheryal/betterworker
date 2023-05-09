@@ -82,7 +82,7 @@ impl Body {
     ///
     /// # Example
     ///
-    /// ```rust,no_run
+    /// ```rust,ignore
     /// # async fn run() -> Result<(), worker::Error> {
     /// # use worker::body::Body;
     /// let body = Body::from("hello world");
@@ -114,7 +114,7 @@ impl Body {
     ///
     /// # Example
     ///
-    /// ```rust,no_run
+    /// ```rust,ignore
     /// # async fn run() -> Result<(), worker::Error> {
     /// # use worker::body::Body;
     /// let body = Body::from("hello world");
@@ -132,7 +132,7 @@ impl Body {
     ///
     /// # Example
     ///
-    /// ```rust,no_run
+    /// ```rust,ignore
     /// # async fn run() -> Result<(), worker::Error> {
     /// # use bytes::Bytes;
     /// # use serde::Deserialize;

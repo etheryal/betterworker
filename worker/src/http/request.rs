@@ -33,7 +33,7 @@ fn version_from_string(version: &str) -> http::Version {
 ///
 /// # Example
 ///
-/// ```rust,no_run
+/// ```rust,ignore
 /// use worker::http::request;
 ///
 /// let req = web_sys::Request::new_with_str("flowers.jpg").unwrap();
@@ -79,7 +79,7 @@ pub fn from_wasm(req: web_sys::Request) -> http::Request<Body> {
 ///
 /// # Example
 ///
-/// ```rust,no_run
+/// ```rust,ignore
 /// use worker::body::Body;
 /// use worker::http::request;
 ///

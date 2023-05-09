@@ -1,9 +1,10 @@
-use std::marker::PhantomData;
+use std::{marker::PhantomData, convert::TryFrom};
 
-use crate::{env::EnvBinding, futures::SendJsFuture, Date, Error, Result};
+use crate::{futures::SendJsFuture, Date, Error, Result};
 use js_sys::Array;
+use send_wrapper::SendWrapper;
 use serde::{de::DeserializeOwned, Serialize};
-use wasm_bindgen::{prelude::*, JsCast};
+use wasm_bindgen::prelude::*;
 use worker_sys::{MessageBatch as MessageBatchSys, Queue as EdgeQueue};
 
 static BODY_KEY_STR: &str = "body";
@@ -151,38 +152,25 @@ impl<'a, T> std::iter::FusedIterator for MessageIter<'a, T> where T: Deserialize
 
 impl<'a, T> std::iter::ExactSizeIterator for MessageIter<'a, T> where T: DeserializeOwned {}
 
-pub struct Queue(EdgeQueue);
+pub struct Queue(SendWrapper<EdgeQueue>);
 
-unsafe impl Send for Queue {}
-unsafe impl Sync for Queue {}
-
-impl EnvBinding for Queue {
-    const TYPE_NAME: &'static str = "WorkerQueue";
+impl AsRef<JsValue> for Queue {
+    fn as_ref(&self) -> &JsValue {
+        self.0.as_ref()
+    }
 }
 
-impl JsCast for Queue {
-    fn instanceof(val: &JsValue) -> bool {
-        val.is_instance_of::<Queue>()
-    }
+impl TryFrom<JsValue> for Queue {
+    type Error = crate::Error;
 
-    fn unchecked_from_js(val: JsValue) -> Self {
-        Self(val.into())
-    }
-
-    fn unchecked_from_js_ref(val: &JsValue) -> &Self {
-        unsafe { &*(val as *const JsValue as *const Self) }
+    fn try_from(val: JsValue) -> Result<Self> {
+        Ok(Self(SendWrapper::new(val.dyn_into()?)))
     }
 }
 
 impl From<Queue> for JsValue {
-    fn from(queue: Queue) -> Self {
-        JsValue::from(queue.0)
-    }
-}
-
-impl AsRef<JsValue> for Queue {
-    fn as_ref(&self) -> &JsValue {
-        &self.0
+    fn from(ns: Queue) -> Self {
+        JsValue::from(ns.0.take())
     }
 }
 

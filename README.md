@@ -109,7 +109,7 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
 
 The project uses [wrangler](https://github.com/cloudflare/wrangler2) version 2.x for running and publishing your Worker.
 
-Get the Rust worker project [template](https://github.com/cloudflare/workers-sdk/tree/main/templates/worker-rust) manually, or run the following command:
+Get the Rust worker project [template](https://github.com/cloudflare/workers-sdk/tree/main/templates/experimental/worker-rust) manually, or run the following command:
 ```bash
 npm init cloudflare project_name worker-rust
 cd project_name
@@ -288,6 +288,46 @@ pub async fn main(message_batch: MessageBatch<MyType>, env: Env, _ctx: Context) 
     Ok(())
 }
 ```
+
+## D1 Databases
+
+### Enabling D1 databases
+As D1 databases are in alpha, you'll need to enable the `d1` feature on the `worker` crate.
+
+```toml
+worker = { version = "x.y.z", features = ["d1"] }
+```
+
+### Example usage
+```rust
+use worker::*;
+
+#[derive(Deserialize)]
+struct Thing {
+	thing_id: String,
+	desc: String,
+	num: u32,
+}
+
+#[event(fetch, respond_with_errors)]
+pub async fn main(request: Request,	env: Env, _ctx: Context) -> Result<Response> {
+	Router::new()
+		.get_async("/:id", |_, ctx| async move {
+			let id = ctx.param("id").unwrap()?;
+			let d1 = ctx.env.d1("things-db")?;
+			let statement = d1.prepare("SELECT * FROM things WHERE thing_id = ?1");
+			let query = statement.bind(&[id])?;
+			let result = query.first::<Thing>(None).await?;
+			match result {
+				Some(thing) => Response::from_json(&thing),
+				None => Response::error("Not found", 404),
+			}
+		})
+		.run(request, env)
+		.await
+}
+```
+
 
 # Notes and FAQ
 

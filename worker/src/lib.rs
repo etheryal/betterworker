@@ -1,6 +1,3 @@
-#![allow(clippy::new_without_default)]
-#![allow(clippy::or_fun_call)]
-
 #[doc(hidden)]
 use std::result::Result as StdResult;
 
@@ -24,6 +21,8 @@ pub use crate::abort::*;
 pub use crate::cache::{Cache, CacheDeletionOutcome};
 pub use crate::cf::*;
 pub use crate::context::Context;
+#[cfg(feature = "d1")]
+pub use crate::d1::*;
 pub use crate::date::{Date, DateInit};
 pub use crate::delay::Delay;
 pub use crate::durable::*;
@@ -32,7 +31,6 @@ pub use crate::env::{Env, Secret, Var};
 pub use crate::error::Error;
 pub use crate::fetch::fetch;
 pub use crate::fetcher::Fetcher;
-// pub use crate::futures::spawn_local;
 #[cfg(feature = "queue")]
 pub use crate::queue::*;
 pub use crate::r2::*;
@@ -45,6 +43,8 @@ pub mod body;
 mod cache;
 mod cf;
 mod context;
+#[cfg(feature = "d1")]
+pub mod d1;
 mod date;
 mod delay;
 pub mod durable;

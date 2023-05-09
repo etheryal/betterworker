@@ -1,9 +1,14 @@
+use std::convert::TryFrom;
+
+#[cfg(feature = "d1")]
+use crate::d1::Database;
 use crate::error::Error;
 #[cfg(feature = "queue")]
 use crate::Queue;
 use crate::{durable::ObjectNamespace, Bucket, DynamicDispatcher, Fetcher, Result};
 
-use js_sys::Object;
+use js_sys::JsString;
+use send_wrapper::SendWrapper;
 use wasm_bindgen::{prelude::*, JsCast, JsValue};
 use worker_kv::KvStore;
 
@@ -17,15 +22,13 @@ unsafe impl Send for Env {}
 unsafe impl Sync for Env {}
 
 impl Env {
-    fn get_binding<T: EnvBinding>(&self, name: &str) -> Result<T> {
+    fn get_binding<T: TryFrom<JsValue, Error = Error>>(&self, name: &str) -> Result<T> {
         let binding = js_sys::Reflect::get(self, &JsValue::from(name))
             .map_err(|_| Error::JsError(format!("Env does not contain binding `{name}`")))?;
         if binding.is_undefined() {
             Err(format!("Binding `{name}` is undefined.").into())
         } else {
-            // Can't just use JsCast::dyn_into here because the type name might not be in scope
-            // resulting in a terribly annoying javascript error which can't be caught
-            T::get(binding)
+            T::try_from(binding)
         }
     }
 
@@ -72,64 +75,34 @@ impl Env {
     pub fn bucket(&self, binding: &str) -> Result<Bucket> {
         self.get_binding(binding)
     }
-}
 
-pub trait EnvBinding: Sized + JsCast {
-    const TYPE_NAME: &'static str;
-
-    fn get(val: JsValue) -> Result<Self> {
-        let obj = Object::from(val);
-        if obj.constructor().name() == Self::TYPE_NAME {
-            Ok(obj.unchecked_into())
-        } else {
-            Err(format!(
-                "Binding cannot be cast to the type {} from {}",
-                Self::TYPE_NAME,
-                obj.constructor().name()
-            )
-            .into())
-        }
+    /// Access a D1 Database by the binding name configured in your wrangler.toml file.
+    #[cfg(feature = "d1")]
+    pub fn d1(&self, binding: &str) -> Result<Database> {
+        self.get_binding(binding)
     }
 }
 
-pub struct StringBinding(JsValue);
-
-unsafe impl Send for StringBinding {}
-unsafe impl Sync for StringBinding {}
-
-impl EnvBinding for StringBinding {
-    const TYPE_NAME: &'static str = "String";
-}
-
-impl JsCast for StringBinding {
-    fn instanceof(val: &JsValue) -> bool {
-        val.is_string()
-    }
-
-    fn unchecked_from_js(val: JsValue) -> Self {
-        StringBinding(val)
-    }
-
-    fn unchecked_from_js_ref(val: &JsValue) -> &Self {
-        unsafe { &*(val as *const JsValue as *const Self) }
-    }
-}
+pub struct StringBinding(SendWrapper<JsString>);
 
 impl AsRef<JsValue> for StringBinding {
     fn as_ref(&self) -> &wasm_bindgen::JsValue {
-        unsafe { &*(&self.0 as *const JsValue) }
+        self.0.as_ref()
     }
 }
 
-impl From<JsValue> for StringBinding {
-    fn from(val: JsValue) -> Self {
-        StringBinding(val)
+impl TryFrom<JsValue> for StringBinding {
+    type Error = Error;
+
+    fn try_from(val: JsValue) -> Result<Self> {
+        let data = val.dyn_into()?;
+        Ok(StringBinding(SendWrapper::new(data)))
     }
 }
 
 impl From<StringBinding> for JsValue {
     fn from(sec: StringBinding) -> Self {
-        sec.0
+        sec.0.take().into()
     }
 }
 
