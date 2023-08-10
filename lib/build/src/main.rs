@@ -1,4 +1,4 @@
-//! Arguments are fowarded directly to wasm-pack
+//! Arguments are forwarded directly to wasm-pack
 
 use std::convert::TryInto;
 use std::env::{self, VarError};
@@ -14,11 +14,11 @@ const OUT_DIR: &str = "build";
 const OUT_NAME: &str = "index";
 const WORKER_SUBDIR: &str = "worker";
 
-const WASM_IMPORT: &str = r#"
-let wasm;
+const WASM_IMPORT: &str = r#"let wasm;
 export function __wbg_set_wasm(val) {
     wasm = val;
 }
+
 "#;
 
 const WASM_IMPORT_REPLACEMENT: &str = r#"
@@ -132,6 +132,7 @@ fn bundle(esbuild_path: &Path) -> Result<()> {
     let mut command = Command::new(esbuild_path);
     command.args([
         "--external:./index.wasm",
+        "--external:cloudflare:sockets",
         "--format=esm",
         "--bundle",
         "./shim.js",

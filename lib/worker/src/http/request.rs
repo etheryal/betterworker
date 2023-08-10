@@ -6,7 +6,9 @@ use futures_util::StreamExt;
 use wasm_bindgen::JsCast;
 
 use super::RequestRedirect;
-use crate::{body::Body, abort::AbortSignal, cf::{Cf, CfProperties}};
+use crate::abort::AbortSignal;
+use crate::body::Body;
+use crate::cf::{Cf, CfProperties};
 
 fn version_from_string(version: &str) -> http::Version {
     match version {

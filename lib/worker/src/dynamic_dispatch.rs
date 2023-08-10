@@ -5,7 +5,9 @@ use js_sys::Object;
 use send_wrapper::SendWrapper;
 use wasm_bindgen::{JsCast, JsValue};
 
-use crate::{fetcher::Fetcher, result::Result, error::Error};
+use crate::error::Error;
+use crate::fetcher::Fetcher;
+use crate::result::Result;
 
 /// A binding for dispatching events to Workers inside of a dispatch namespace
 /// by their name. This allows for your worker to directly invoke many workers

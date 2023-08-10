@@ -64,8 +64,9 @@ pub fn expand_macro(attr: TokenStream, item: TokenStream) -> TokenStream {
                 },
             };
 
-            // create a new "main" function that takes the betterworker_sys::Request, and calls
-            // the original attributed function, passing in a http::Request
+            // create a new "main" function that takes the betterworker_sys::Request, and
+            // calls the original attributed function, passing in a
+            // http::Request
             let wrapper_fn = quote! {
                 pub async fn #wrapper_fn_ident(
                     req: ::betterworker::betterworker_sys::web_sys::Request,

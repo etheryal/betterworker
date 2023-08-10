@@ -68,10 +68,17 @@ pub fn expand_macro(tokens: TokenStream) -> syn::Result<TokenStream> {
                             .into_token_stream();
 
                         let FnArg::Typed(mut state_pat) = syn::parse2::<FnArg>(state_arg)? else {
-                            return Err(Error::new(method.sig.inputs.span(), "DurableObject `new` method expects `state: State` as first argument."))
+                            return Err(Error::new(
+                                method.sig.inputs.span(),
+                                "DurableObject `new` method expects `state: State` as first \
+                                 argument.",
+                            ));
                         };
                         let FnArg::Typed(mut env_pat) = syn::parse2::<FnArg>(env_arg)? else {
-                            return Err(Error::new(method.sig.inputs.span(), "DurableObject `new` method expects `env: Env` as second argument."))
+                            return Err(Error::new(
+                                method.sig.inputs.span(),
+                                "DurableObject `new` method expects `env: Env` as second argument.",
+                            ));
                         };
 
                         let path = syn::parse2::<TypePath>(quote! {
@@ -173,7 +180,7 @@ pub fn expand_macro(tokens: TokenStream) -> syn::Result<TokenStream> {
                     &mut self,
                 ) -> ::betterworker::result::Result<::betterworker::http::Response<::betterworker::body::Body>> {
                     self._alarm_raw().await
-                }                
+                }
             });
             Ok(quote! {
                 #wasm_bindgen_attr

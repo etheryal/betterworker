@@ -6,9 +6,10 @@ use send_wrapper::SendWrapper;
 use wasm_bindgen::{JsCast, JsValue};
 
 use crate::body::Body;
+use crate::error::Error;
 use crate::futures::SendJsFuture;
 use crate::http::{request, response};
-use crate::{error::Error, result::Result};
+use crate::result::Result;
 
 /// A struct for invoking fetch events to other Workers.
 pub struct Fetcher(SendWrapper<FetcherSys>);

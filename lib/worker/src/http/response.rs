@@ -3,7 +3,8 @@
 use betterworker_sys::ext::{HeadersExt, ResponseExt, ResponseInitExt};
 use wasm_bindgen::JsCast;
 
-use crate::{body::Body, prelude::WebSocket};
+use crate::body::Body;
+use crate::prelude::WebSocket;
 
 /// Create a [`http::Response`] from a [`web_sys::Response`].
 ///

@@ -297,9 +297,8 @@ where
 mod tests {
     use static_assertions::assert_impl_all;
 
-    use crate::test_assertions::*;
-
     use super::*;
+    use crate::test_assertions::*;
 
     assert_impl_all!(Database: Send, Sync);
     assert_impl_all!(PreparedStatement: Send, Sync);

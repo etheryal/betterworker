@@ -8,14 +8,15 @@ use betterworker_sys::{
     R2UploadedPart as EdgeR2UploadedPart,
 };
 pub use builder::*;
-use js_sys::{JsString, Reflect, Uint8Array, Object};
+use js_sys::{JsString, Object, Reflect, Uint8Array};
 use send_wrapper::SendWrapper;
 use wasm_bindgen::{JsCast, JsValue};
 
 use crate::date::Date;
+use crate::error::Error;
 use crate::futures::SendJsFuture;
+use crate::result::Result;
 use crate::streams::{ByteStream, FixedLengthStream};
-use crate::{error::Error, result::Result};
 
 mod builder;
 

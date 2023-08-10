@@ -1,107 +1,29 @@
-![workers-rs](.github/logo.png)
-[![crates.io](https://img.shields.io/crates/v/worker)](https://crates.io/crates/worker)
-[![docs.rs](https://img.shields.io/docsrs/worker)](https://docs.rs/worker)
+# BetterWorkers 🦀
 
-**Work-in-progress** ergonomic Rust bindings to Cloudflare Workers environment. Write your entire worker in Rust!
+A fork of [workers-rs](https://github.com/cloudflare/workers-rs) that provides a safer and more ergonomic way to write Cloudflare Workers in Rust. It supports the following features:
 
-Read the [Notes and FAQ](#notes-and-faq)
+- [x] [`http`](https://crates.io/crates/http) crate for HTTP types, instead of using the custom types of `workers-rs`. This allows you to use Axum or any other HTTP framework.
+- [x] Removed all `unsafe` code, and replaced it with safe wrappers.
+- [x] All types are `Send` and `Sync`, so you can use them in async functions, unlike types in `workers-rs`.
+- [x] `async`/`.await` support for all event types.
 
 ## Example Usage
 
 ```rust
-use betterworker::*;
+use betterworker::prelude::*;
 
 #[event(fetch)]
-pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
+pub async fn main(req: Request<Body>, _env: Env, _ctx: Context) -> Result<Response<Body>, Error> {
+    let cf = req.extensions().get::<Cf>().unwrap();
     console_log!(
         "{} {}, located at: {:?}, within: {}",
         req.method().to_string(),
-        req.path(),
-        req.cf().coordinates().unwrap_or_default(),
-        req.cf().region().unwrap_or("unknown region".into())
+        req.uri().path(),
+        cf.coordinates().unwrap_or_default(),
+        cf.region().unwrap_or("unknown region".into())
     );
 
-    if !matches!(req.method(), Method::Post) {
-        return Response::error("Method Not Allowed", 405);
-    }
-
-    if let Some(file) = req.form_data().await?.get("file") {
-        return match file {
-            FormEntry::File(buf) => {
-                Response::ok(&format!("size = {}", buf.bytes().await?.len()))
-            }
-            _ => Response::error("`file` part of POST form must be a file", 400),
-        };
-    }
-
-    Response::error("Bad Request", 400)
-}
-```
-
-### Or use the `Router`:
-
-Parameterize routes and access the parameter values from within a handler. Each handler function takes a
-`Request`, and a `RouteContext`. The `RouteContext` has shared data, route params, `Env` bindings, and more.
-
-```rust
-use betterworker::*;
-
-#[event(fetch)]
-pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
-
-    // Create an instance of the Router, which can use parameters (/user/:name) or wildcard values
-    // (/file/*pathname). Alternatively, use `Router::with_data(D)` and pass in arbitrary data for
-    // routes to access and share using the `ctx.data()` method.
-    let router = Router::new();
-
-    // useful for JSON APIs
-    #[derive(Deserialize, Serialize)]
-    struct Account {
-        id: u64,
-        // ...
-    }
-    router
-        .get_async("/account/:id", |_req, ctx| async move {
-            if let Some(id) = ctx.param("id") {
-                let accounts = ctx.kv("ACCOUNTS")?;
-                return match accounts.get(id).json::<Account>().await? {
-                    Some(account) => Response::from_json(&account),
-                    None => Response::error("Not found", 404),
-                };
-            }
-
-            Response::error("Bad Request", 400)
-        })
-        // handle files and fields from multipart/form-data requests
-        .post_async("/upload", |mut req, _ctx| async move {
-            let form = req.form_data().await?;
-            if let Some(entry) = form.get("file") {
-                match entry {
-                    FormEntry::File(file) => {
-                        let bytes = file.bytes().await?;
-                    }
-                    FormEntry::Field(_) => return Response::error("Bad Request", 400),
-                }
-                // ...
-
-                if let Some(permissions) = form.get("permissions") {
-                    // permissions == "a,b,c,d"
-                }
-                // or call `form.get_all("permissions")` if using multiple entries per field
-            }
-
-            Response::error("Bad Request", 400)
-        })
-        // read/write binary data
-        .post_async("/echo-bytes", |mut req, _ctx| async move {
-            let data = req.bytes().await?;
-            if data.len() < 1024 {
-                return Response::error("Bad Request", 400);
-            }
-
-            Response::from_bytes(data)
-        })
-        .run(req, env).await
+    Ok(Response::new(Body::from("Hello, world!")))
 }
 ```
 
@@ -142,38 +64,38 @@ If you would like to have `wrangler` installed on your machine, see instructions
 ## Durable Object, KV, Secret, & Variable Bindings
 
 All "bindings" to your script (Durable Object & KV Namespaces, Secrets, and Variables) are
-accessible from the `env` parameter provided to both the entrypoint (`main` in this example), and to
-the route handler callback (in the `ctx` argument), if you use the `Router` from the `worker` crate.
+accessible from the `env` parameter provided to the entrypoint (`main` in this example).
 
 ```rust
-use betterworker::*;
+use betterworker::{
+    http::{Method, StatusCode},
+    prelude::*,
+};
 
-#[event(fetch, respond_with_errors)]
-pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
-    utils::set_panic_hook();
-
-    let router = Router::new();
-
-    router
-        .on_async("/durable", |_req, ctx| async move {
-            let namespace = ctx.durable_object("CHATROOM")?;
+#[event(fetch)]
+pub async fn main(req: Request<Body>, env: Env, _ctx: Context) -> Result<Response<Body>, Error> {
+    match (req.method().clone(), req.uri().path()) {
+        (Method::GET, "/durable") => {
+            let namespace = env.durable_object("CHATROOM")?;
             let stub = namespace.id_from_name("A")?.get_stub()?;
             stub.fetch_with_str("/messages").await
-        })
-        .get("/secret", |_req, ctx| {
-            Response::ok(ctx.secret("CF_API_TOKEN")?.to_string())
-        })
-        .get("/var", |_req, ctx| {
-            Response::ok(ctx.var("BUILD_NUMBER")?.to_string())
-        })
-        .post_async("/kv", |_req, ctx| async move {
-            let kv = ctx.kv("SOME_NAMESPACE")?;
-
+        }
+        (Method::GET, "/secret") => Ok(Response::new(Body::from(
+            env.secret("CF_API_TOKEN")?.to_string(),
+        ))),
+        (Method::GET, "/var") => Ok(Response::new(Body::from(
+            env.var("BUILD_NUMBER")?.to_string(),
+        ))),
+        (Method::POST, "/kv") => {
+            let kv = env.kv("SOME_NAMESPACE")?;
             kv.put("key", "value")?.execute().await?;
-
-            Response::empty()
-        })
-        .run(req, env).await
+            Ok(Response::new(Body::empty()))
+        }
+        (_, _) => Ok(Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Body::empty())
+            .unwrap()),
+    }
 }
 ```
 
@@ -191,7 +113,9 @@ on your own struct. Additionally, the `#[durable_object]` attribute macro must b
 your struct definition and the trait `impl` block for it.
 
 ```rust
-use betterworker::*;
+#![feature(async_fn_in_trait)]
+use betterworker::prelude::*;
+use betterworker::wasm_bindgen;
 
 #[durable_object]
 pub struct Chatroom {
@@ -212,7 +136,7 @@ impl DurableObject for Chatroom {
         }
     }
 
-    async fn fetch(&mut self, _req: Request) -> Result<Response> {
+    async fn fetch(&mut self, _req: Request<Body>) -> Result<Response<Body>, Error> {
         // do some work when a worker makes a request to this DO
         Response::ok(&format!("{} active users.", self.users.len()))
     }
@@ -252,7 +176,7 @@ worker = {version = "...", features = ["queue"]}
 
 ### Example worker consuming and producing messages:
 ```rust
-use betterworker::*;
+use betterworker::prelude::*;
 use serde::{Deserialize, Serialize};
 #[derive(Serialize, Debug, Clone, Deserialize)]
 pub struct MyType {
@@ -262,7 +186,7 @@ pub struct MyType {
 
 // Consume messages from a queue
 #[event(queue)]
-pub async fn main(message_batch: MessageBatch<MyType>, env: Env, _ctx: Context) -> Result<()> {
+pub async fn main(message_batch: MessageBatch<MyType>, env: Env, _ctx: Context) -> Result<(), Error> {
     // Get a queue with the binding 'my_queue'
     let my_queue = env.queue("my_queue")?;
 
@@ -300,7 +224,8 @@ worker = { version = "x.y.z", features = ["d1"] }
 
 ### Example usage
 ```rust
-use betterworker::*;
+use betterworker::{prelude::*, http::Method};
+use serde::Deserialize;
 
 #[derive(Deserialize)]
 struct Thing {
@@ -309,80 +234,27 @@ struct Thing {
 	num: u32,
 }
 
-#[event(fetch, respond_with_errors)]
-pub async fn main(request: Request,	env: Env, _ctx: Context) -> Result<Response> {
-	Router::new()
-		.get_async("/:id", |_, ctx| async move {
-			let id = ctx.param("id").unwrap()?;
-			let d1 = ctx.env.d1("things-db")?;
+#[event(fetch)]
+pub async fn main(req: Request<Body>,	env: Env, _ctx: Context) -> Result<Response<Body>, Error> {
+    match (req.method().clone(), req.uri().path()) {
+        (Method::GET, route) => {
+			let d1 = env.d1("things-db")?;
 			let statement = d1.prepare("SELECT * FROM things WHERE thing_id = ?1");
-			let query = statement.bind(&[id])?;
+			let query = statement.bind(route)?;
 			let result = query.first::<Thing>(None).await?;
+            let serialized = serde_json::to_string(&result)?;
 			match result {
-				Some(thing) => Response::from_json(&thing),
-				None => Response::error("Not found", 404),
+				Some(thing) => Ok(Response::new(Body::new(serialized))),
+				None => Ok(Response::builder()
+                    .status(404)
+                    .body(Body::empty())
+                    .unwrap()),
 			}
-		})
-		.run(request, env)
-		.await
+        }
+        _ => Ok(Response::builder()
+            .status(404)
+            .body(Body::empty())
+            .unwrap()),
+    }
 }
 ```
-
-
-# Notes and FAQ
-
-It is exciting to see how much is possible with a framework like this, by expanding the options
-developers have when building on top of the Workers platform. However, there is still much to be
-done. Expect a few rough edges, some unimplemented APIs, and maybe a bug or two here and there. It’s
-worth calling out here that some things that may have worked in your Rust code might not work here -
-it’s all WebAssembly at the end of the day, and if your code or third-party libraries don’t target
-`wasm32-unknown-unknown`, they can’t be used on Workers. Additionally, you’ve got to leave your
-threaded async runtimes at home; meaning no Tokio or async_std support. However, async/await syntax
-is still available and supported out of the box when you use the `worker` crate.
-
-We fully intend to support this crate and continue to build out its missing features, but your help
-and feedback is a must. We don’t like to build in a vacuum, and we’re in an incredibly fortunate
-position to have brilliant customers like you who can help steer us towards an even better product.
-
-So give it a try, leave some feedback, and star the repo to encourage us to dedicate more time and
-resources to this kind of project.
-
-If this is interesting to you and you want to help out, we’d be happy to get outside contributors
-started. We know there are improvements to be made such as compatibility with popular Rust HTTP
-ecosystem types (we have an example conversion for [Headers](https://github.com/cloudflare/workers-rs/blob/3d5876a1aca0a649209152d1ffd52dae7bccda87/libworker/src/headers.rs#L131-L167) if you want to make one), implementing additional Web APIs, utility crates,
-and more. In fact, we’re always on the lookout for great engineers, and hiring for many open roles -
-please [take a look](https://www.cloudflare.com/careers/).
-
-### FAQ
-
-1. Can I deploy a Worker that uses `tokio` or `async_std` runtimes?
-
-- Currently no. All crates in your Worker project must compile to `wasm32-unknown-unknown` target,
-  which is more limited in some ways than targets for x86 and ARM64.
-
-2. The `worker` crate doesn't have _X_! Why not?
-
-- Most likely, it should, we just haven't had the time to fully implement it or add a library to
-  wrap the FFI. Please let us know you need a feature by [opening an issue](https://github.com/cloudflare/workers-rs/issues).
-
-3. My bundle size exceeds [Workers size limits](https://developers.cloudflare.com/workers/platform/limits/), what do I do?
-
-- We're working on solutions here, but in the meantime you'll need to minimize the number of crates
-  your code depends on, or strip as much from the `.wasm` binary as possible. Here are some extra
-  steps you can try: https://rustwasm.github.io/book/reference/code-size.html#optimizing-builds-for-code-size
-
-# Contributing
-
-Your feedback is welcome and appreciated! Please use the issue tracker to talk about potential
-implementations or make feature requests. If you're interested in making a PR, we suggest opening up
-an issue to talk about the change you'd like to make as early as possible.
-
-## Project Contents
-
-- **worker**: the user-facing crate, with Rust-familiar abstractions over the Rust<->JS/WebAssembly
-  interop via wrappers and convenience library over the FFI bindings.
-- **worker-sys**: Rust extern "C" definitions for FFI compatibility with the Workers JS Runtime.
-- **worker-macros**: exports `event` and `durable_object` macros for wrapping Rust entry point in a
-  `fetch` method of an ES Module, and code generation to create and interact with Durable Objects.
-- **worker-sandbox**: a functioning Cloudflare Worker for testing features and ergonomics.
-- **worker-build**: a cross-platform build command for `workers-rs`-based projects.

@@ -17,14 +17,9 @@ fn websocket() {
     let (mut socket, _) =
         connect(Url::parse("ws://127.0.0.1:8787/websocket").unwrap()).expect("Can't connect");
 
-    socket
-        .send(Message::Text("Hello, world!".into()))
-        .unwrap();
+    socket.send(Message::Text("Hello, world!".into())).unwrap();
 
-    let msg = socket
-        .read()
-        .and_then(|msg| msg.into_text())
-        .unwrap();
+    let msg = socket.read().and_then(|msg| msg.into_text()).unwrap();
 
     assert_eq!(&msg, "Hello, world!");
 

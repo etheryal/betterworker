@@ -2,9 +2,10 @@ use wasm_bindgen::JsCast;
 use web_sys::WorkerGlobalScope;
 
 use crate::body::Body;
+use crate::error::Error;
 use crate::futures::SendJsFuture;
 use crate::http::{request, response};
-use crate::{error::Error, result::Result};
+use crate::result::Result;
 
 /// Fetch a resource from the network.
 ///

@@ -9,7 +9,7 @@ use js_sys::{Array, Date as JsDate, JsString, Object as JsObject, Uint8Array};
 use send_wrapper::SendWrapper;
 use wasm_bindgen::{JsCast, JsValue};
 
-use super::{Data, R2Object, ObjectInner, MultipartUpload, R2Objects};
+use super::{Data, MultipartUpload, ObjectInner, R2Object, R2Objects};
 use crate::date::Date;
 use crate::error::Error;
 use crate::futures::SendJsFuture;
