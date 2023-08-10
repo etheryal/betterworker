@@ -1,0 +1,19 @@
+[package]
+name = "betterworker-build"
+authors = { workspace = true }
+edition = { workspace = true }
+version = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+readme = { workspace = true }
+description = "This is a tool to be used as a custom build command for a Cloudflare Workers `workers-rs` project."
+
+[dependencies]
+anyhow = "1.0.72"
+dirs-next = "2.0.0"
+flate2 = "1.0.26"
+tar = "0.4.40"
+ureq = { version = "2.7.1", features = ["tls", "gzip"] }
+
+[dev-dependencies]
+wasm-bindgen-cli-support = "0.2.87"

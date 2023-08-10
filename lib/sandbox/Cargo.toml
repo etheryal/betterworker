@@ -1,0 +1,39 @@
+[package]
+name = "betterworker-sandbox"
+authors = { workspace = true }
+edition = { workspace = true }
+version = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+readme = { workspace = true }
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[features]
+default = ["console_error_panic_hook"]
+
+[dependencies]
+cfg-if = "1.0.0"
+console_error_panic_hook = { version = "0.1.7", optional = true }
+serde = { version = "1.0.183", features = ["derive"] }
+serde_json = "1.0.104"
+betterworker = { workspace = true, features= ["d1", "queue"] }
+futures-channel = "0.3.28"
+futures-util = { version = "0.3.28", default-features = false }
+serde-wasm-bindgen = "0.5.0"
+md5 = "0.7.0"
+thiserror = "1.0.44"
+
+[dev-dependencies]
+futures-channel = { version = "0.3.28", features = ["sink"] }
+futures-util = { version = "0.3.28", default-features = false, features = ["sink"] }
+reqwest = { version = "0.11.18", features = [
+    "blocking",
+    "json",
+    "multipart",
+    "stream",
+] }
+tungstenite = "0.20.0"
+retry = "2.0.0"

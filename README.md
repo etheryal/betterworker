@@ -9,7 +9,7 @@ Read the [Notes and FAQ](#notes-and-faq)
 ## Example Usage
 
 ```rust
-use worker::*;
+use betterworker::*;
 
 #[event(fetch)]
 pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
@@ -44,7 +44,7 @@ Parameterize routes and access the parameter values from within a handler. Each 
 `Request`, and a `RouteContext`. The `RouteContext` has shared data, route params, `Env` bindings, and more.
 
 ```rust
-use worker::*;
+use betterworker::*;
 
 #[event(fetch)]
 pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
@@ -146,7 +146,7 @@ accessible from the `env` parameter provided to both the entrypoint (`main` in t
 the route handler callback (in the `ctx` argument), if you use the `Router` from the `worker` crate.
 
 ```rust
-use worker::*;
+use betterworker::*;
 
 #[event(fetch, respond_with_errors)]
 pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
@@ -191,7 +191,7 @@ on your own struct. Additionally, the `#[durable_object]` attribute macro must b
 your struct definition and the trait `impl` block for it.
 
 ```rust
-use worker::*;
+use betterworker::*;
 
 #[durable_object]
 pub struct Chatroom {
@@ -252,7 +252,7 @@ worker = {version = "...", features = ["queue"]}
 
 ### Example worker consuming and producing messages:
 ```rust
-use worker::*;
+use betterworker::*;
 use serde::{Deserialize, Serialize};
 #[derive(Serialize, Debug, Clone, Deserialize)]
 pub struct MyType {
@@ -300,7 +300,7 @@ worker = { version = "x.y.z", features = ["d1"] }
 
 ### Example usage
 ```rust
-use worker::*;
+use betterworker::*;
 
 #[derive(Deserialize)]
 struct Thing {
