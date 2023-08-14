@@ -13,7 +13,7 @@ proc-macro = true
 path = "src/lib.rs"
 
 [dependencies]
-async-trait = "0.1.72"
+async-trait = "0.1.73"
 betterworker-sys = { workspace = true }
 syn = "2.0.28"
 proc-macro2 = "1.0.66"
