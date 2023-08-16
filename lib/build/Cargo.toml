@@ -9,7 +9,7 @@ readme = { workspace = true }
 description = "This is a tool to be used as a custom build command for a Cloudflare Workers `workers-rs` project."
 
 [dependencies]
-anyhow = "1.0.72"
+anyhow = "1.0.74"
 dirs-next = "2.0.0"
 flate2 = "1.0.26"
 tar = "0.4.40"
