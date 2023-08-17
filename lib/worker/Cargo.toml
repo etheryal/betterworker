@@ -30,7 +30,7 @@ betterworker-sys = { workspace = true }
 http-body = "0.4.5"
 bytes = "1.4.0"
 send_wrapper = { version = "0.6.0", features = ["futures"] }
-thiserror = "1.0.44"
+thiserror = "1.0.47"
 tokio = { version = "1.30.0", default-features = false }
 
 [dependencies.web-sys]
