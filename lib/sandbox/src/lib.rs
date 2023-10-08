@@ -91,7 +91,7 @@ pub fn start() {
 }
 
 #[event(fetch)]
-pub async fn main(req: Request<Body>, env: Env, _ctx: Context) -> Result<Response<Body>, Error> {
+pub async fn main(req: Request<Body>, env: Env, _ctx: Context) -> Result<Response<Body>, WorkerError> {
     let res = match (req.method().clone(), req.uri().path()) {
         (Method::GET, "/request") => handle_a_request(req),
         (Method::GET, "/empty") => {
@@ -322,8 +322,7 @@ pub async fn main(req: Request<Body>, env: Env, _ctx: Context) -> Result<Respons
         },
         (Method::GET, "/d1/people") => {
             let d1: Database = env.d1("DB")?;
-            let result = d1.prepare("select * from people;").all::<Person>().await?;
-            let people = result.results();
+            let people = d1.prepare("select * from people;").all::<Person>().await?;
             Response::new(serde_json::to_string(&people).unwrap().into())
         },
         (Method::POST, "/d1/people") => {
@@ -356,7 +355,7 @@ pub struct QueueBody {
 #[event(queue)]
 pub async fn queue(
     message_batch: MessageBatch<QueueBody>, _env: Env, _ctx: Context,
-) -> Result<(), Error> {
+) -> Result<(), WorkerError> {
     let mut guard = GLOBAL_QUEUE_STATE.lock().unwrap();
     for message in message_batch.messages()? {
         console_log!(

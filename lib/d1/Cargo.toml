@@ -1,0 +1,23 @@
+[package]
+name = "betterworker-d1"
+description = "A library to access Cloudflare Workers D1 Database"
+license.workspace = true
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme.workspace = true
+
+[dependencies]
+betterworker-sys = { workspace = true, features = ["d1"] }
+futures-util = { version = "0.3.28", default-features = false }
+js-sys = "0.3.64"
+send_wrapper = { version = "0.6.0", features = ["futures"] }
+serde = { version = "1.0.183", features = ["derive"] }
+wasm-bindgen = "0.2.87"
+serde-wasm-bindgen = "0.5.0"
+wasm-bindgen-futures = "0.4.37"
+thiserror = "1.0.44"
+
+[dev-dependencies]
+static_assertions = "1.1.0"

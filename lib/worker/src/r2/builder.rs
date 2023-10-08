@@ -11,7 +11,7 @@ use wasm_bindgen::{JsCast, JsValue};
 
 use super::{Data, MultipartUpload, ObjectInner, R2Object, R2Objects};
 use crate::date::Date;
-use crate::error::Error;
+use crate::error::WorkerError;
 use crate::futures::SendJsFuture;
 use crate::result::Result;
 
@@ -53,7 +53,7 @@ impl<'bucket> GetOptionsBuilder<'bucket> {
 
             SendJsFuture::from(get_promise)
         };
-        let value = fut.await?;
+        let value = fut.await.map_err(WorkerError::from_promise_err)?;
 
         if value.is_null() {
             return Ok(None);
@@ -135,7 +135,7 @@ impl From<Range> for JsObject {
 }
 
 impl TryFrom<R2RangeSys> for Range {
-    type Error = Error;
+    type Error = WorkerError;
 
     fn try_from(val: R2RangeSys) -> Result<Self> {
         Ok(match (val.offset, val.length, val.suffix) {
@@ -149,7 +149,7 @@ impl TryFrom<R2RangeSys> for Range {
                 length,
             },
             (None, None, Some(suffix)) => Self::Suffix { suffix },
-            _ => return Err(Error::InvalidRange),
+            _ => return Err(WorkerError::InvalidRange),
         })
     }
 }
@@ -200,7 +200,7 @@ impl<'bucket> PutOptionsBuilder<'bucket> {
                         Some(metadata) => {
                             let obj = JsObject::new();
                             for (k, v) in metadata.into_iter() {
-                                js_sys::Reflect::set(&obj, &JsString::from(k), &JsString::from(v))?;
+                                js_sys::Reflect::set(&obj, &JsString::from(k), &JsString::from(v)).map_err(WorkerError::from_js_err)?;
                             }
                             obj.into()
                         }
@@ -217,7 +217,7 @@ impl<'bucket> PutOptionsBuilder<'bucket> {
             SendJsFuture::from(put_promise)
         };
 
-        let res: EdgeR2Object = fut.await?.into();
+        let res: EdgeR2Object = fut.await.map_err(WorkerError::from_promise_err)?.into();
         let inner = if JsString::from("bodyUsed").js_in(&res) {
             ObjectInner::Body(SendWrapper::new(res.unchecked_into()))
         } else {
@@ -266,7 +266,7 @@ impl<'bucket> CreateMultipartUploadOptionsBuilder<'bucket> {
                         Some(metadata) => {
                             let obj = JsObject::new();
                             for (k, v) in metadata.into_iter() {
-                                js_sys::Reflect::set(&obj, &JsString::from(k), &JsString::from(v))?;
+                                js_sys::Reflect::set(&obj, &JsString::from(k), &JsString::from(v)).map_err(WorkerError::from_js_err)?;
                             }
                             obj.into()
                         }
@@ -279,7 +279,7 @@ impl<'bucket> CreateMultipartUploadOptionsBuilder<'bucket> {
             SendJsFuture::from(create_multipart_upload_promise)
         };
 
-        let inner: EdgeR2MutipartUpload = fut.await?.into();
+        let inner: EdgeR2MutipartUpload = fut.await.map_err(WorkerError::from_promise_err)?.into();
 
         Ok(MultipartUpload {
             inner: SendWrapper::new(inner),
@@ -421,7 +421,7 @@ impl<'bucket> ListOptionsBuilder<'bucket> {
             SendJsFuture::from(list_promise)
         };
 
-        let inner = fut.await?.into();
+        let inner = fut.await.map_err(WorkerError::from_promise_err)?.into();
         Ok(R2Objects {
             inner: SendWrapper::new(inner),
         })

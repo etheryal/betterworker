@@ -2,7 +2,7 @@ use wasm_bindgen::JsCast;
 use web_sys::WorkerGlobalScope;
 
 use crate::body::Body;
-use crate::error::Error;
+use crate::error::WorkerError;
 use crate::futures::SendJsFuture;
 use crate::http::{request, response};
 use crate::result::Result;
@@ -42,5 +42,5 @@ pub async fn fetch(req: http::Request<impl Into<Body>>) -> Result<http::Response
 
     fut.await
         .map(|res| response::from_web_sys_response(res.unchecked_into()))
-        .map_err(Error::from)
+        .map_err(WorkerError::from_promise_err)
 }

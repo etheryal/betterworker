@@ -14,6 +14,7 @@ authors = [
 readme = "README.md"
 
 [workspace.dependencies]
+betterworker-d1 = { path = "lib/d1" }
 betterworker-build = { path = "lib/build" }
 betterworker-macros = { path = "lib/macros" }
 betterworker-sandbox = { path = "lib/sandbox" }

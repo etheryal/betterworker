@@ -13,7 +13,7 @@ use send_wrapper::SendWrapper;
 use wasm_bindgen::{JsCast, JsValue};
 
 use crate::date::Date;
-use crate::error::Error;
+use crate::error::WorkerError;
 use crate::futures::SendJsFuture;
 use crate::result::Result;
 use crate::streams::{ByteStream, FixedLengthStream};
@@ -31,7 +31,7 @@ impl Bucket {
             let head_promise = self.0.head(key.into());
             SendJsFuture::from(head_promise)
         };
-        let value = fut.await?;
+        let value = fut.await.map_err(WorkerError::from_promise_err)?;
 
         if value.is_null() {
             return Ok(None);
@@ -83,7 +83,7 @@ impl Bucket {
             SendJsFuture::from(delete_promise)
         };
 
-        fut.await?;
+        fut.await.map_err(WorkerError::from_promise_err)?;
         Ok(())
     }
 
@@ -144,7 +144,7 @@ impl AsRef<JsValue> for Bucket {
 }
 
 impl TryFrom<Object> for Bucket {
-    type Error = Error;
+    type Error = WorkerError;
 
     fn try_from(obj: Object) -> Result<Self> {
         const TYPE_NAME: &'static str = "R2Bucket";
@@ -152,10 +152,7 @@ impl TryFrom<Object> for Bucket {
         let data = if obj.constructor().name() == TYPE_NAME {
             obj.unchecked_into()
         } else {
-            return Err(Error::BindingCast(
-                TYPE_NAME.to_string(),
-                obj.constructor().name().as_string().unwrap(),
-            ));
+            return Err(WorkerError::BindingCast);
         };
         Ok(Self(SendWrapper::new(data)))
     }
@@ -238,7 +235,10 @@ impl R2Object {
 
         for key in keys {
             let key = key.unchecked_into::<JsString>();
-            let value = Reflect::get(&metadata, &key)?.dyn_into::<JsString>()?;
+            let value = Reflect::get(&metadata, &key)
+                .map_err(WorkerError::from_js_err)?
+                .dyn_into::<JsString>()
+                .map_err(WorkerError::from_cast_err)?;
             map.insert(key.into(), value.into());
         }
 
@@ -273,12 +273,16 @@ impl R2Object {
             .iter()
             .filter_map(|(name, value)| value.to_str().map(|value| (name.as_str(), value)).ok())
         {
-            h.append(name, value)?;
+            h.append(name, value).map_err(WorkerError::from_js_err)?;
         }
 
         match &self.inner {
-            ObjectInner::NoBody(inner) => inner.write_http_metadata(h)?,
-            ObjectInner::Body(inner) => inner.write_http_metadata(h)?,
+            ObjectInner::NoBody(inner) => inner
+                .write_http_metadata(h)
+                .map_err(WorkerError::from_js_err)?,
+            ObjectInner::Body(inner) => inner
+                .write_http_metadata(h)
+                .map_err(WorkerError::from_js_err)?,
         };
 
         Ok(())
@@ -294,7 +298,7 @@ impl<'body> ObjectBody<'body> {
     /// Reads the data in the [Object] via a [ByteStream].
     pub fn stream(self) -> Result<ByteStream> {
         if self.inner.body_used() {
-            return Err(Error::BodyUsed);
+            return Err(WorkerError::BodyUsed);
         }
 
         let stream = self.inner.body();
@@ -306,7 +310,7 @@ impl<'body> ObjectBody<'body> {
 
     pub async fn bytes(self) -> Result<Vec<u8>> {
         let fut = SendJsFuture::from(self.inner.array_buffer());
-        let js_buffer = fut.await?;
+        let js_buffer = fut.await.map_err(WorkerError::from_promise_err)?;
 
         let js_buffer = Uint8Array::new(&js_buffer);
         let mut bytes = vec![0; js_buffer.length() as usize];
@@ -362,7 +366,7 @@ impl MultipartUpload {
         &self, part_number: u16, value: impl Into<Data>,
     ) -> Result<UploadedPart> {
         let fut = SendJsFuture::from(self.inner.upload_part(part_number, value.into().into()));
-        let uploaded_part = fut.await?;
+        let uploaded_part = fut.await.map_err(WorkerError::from_promise_err)?;
 
         Ok(UploadedPart {
             inner: SendWrapper::new(uploaded_part.into()),
@@ -372,7 +376,7 @@ impl MultipartUpload {
     /// Aborts the multipart upload.
     pub async fn abort(&self) -> Result<()> {
         let fut = SendJsFuture::from(self.inner.abort());
-        fut.await?;
+        fut.await.map_err(WorkerError::from_promise_err)?;
         Ok(())
     }
 
@@ -390,8 +394,7 @@ impl MultipartUpload {
                     .collect(),
             ),
         );
-        let object = fut.await?;
-
+        let object = fut.await.map_err(WorkerError::from_promise_err)?;
         Ok(R2Object {
             inner: ObjectInner::Body(SendWrapper::new(object.into())),
         })

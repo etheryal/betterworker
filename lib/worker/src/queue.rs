@@ -10,7 +10,7 @@ use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
 use crate::date::Date;
-use crate::error::Error;
+use crate::error::WorkerError;
 use crate::futures::SendJsFuture;
 use crate::result::Result;
 
@@ -104,13 +104,15 @@ where
     T: DeserializeOwned,
 {
     fn parse_message(&self, message: &JsValue) -> Result<Message<T>> {
-        let date = js_sys::Date::from(js_sys::Reflect::get(message, self.0.timestamp_key)?);
-        let id = js_sys::Reflect::get(message, self.0.id_key)?
+        let raw_date = js_sys::Reflect::get(message, self.0.timestamp_key)
+            .map_err(WorkerError::from_js_err)?;
+        let date = js_sys::Date::from(raw_date);
+        let id = js_sys::Reflect::get(message, self.0.id_key)
+            .map_err(WorkerError::from_js_err)?
             .as_string()
-            .ok_or(Error::Custom(
-                "Invalid message batch. Failed to get id from message.".to_string(),
-            ))?;
-        let body = serde_wasm_bindgen::from_value(js_sys::Reflect::get(message, self.0.body_key)?)?;
+            .ok_or(WorkerError::InvalidMessageBatch)?;
+        let value = js_sys::Reflect::get(message, self.0.body_key).map_err(WorkerError::from_js_err)?;
+        let body = serde_wasm_bindgen::from_value(value)?;
 
         Ok(Message {
             id,
@@ -163,7 +165,7 @@ impl AsRef<JsValue> for Queue {
 }
 
 impl TryFrom<Object> for Queue {
-    type Error = Error;
+    type Error = WorkerError;
 
     fn try_from(obj: Object) -> Result<Self> {
         const TYPE_NAME: &'static str = "Queue";
@@ -171,10 +173,7 @@ impl TryFrom<Object> for Queue {
         let data = if obj.constructor().name() == TYPE_NAME {
             obj.unchecked_into()
         } else {
-            return Err(Error::BindingCast(
-                TYPE_NAME.to_string(),
-                obj.constructor().name().as_string().unwrap(),
-            ));
+            return Err(WorkerError::BindingCast);
         };
         Ok(Self(SendWrapper::new(data)))
     }
@@ -196,7 +195,7 @@ impl Queue {
             SendJsFuture::from(self.0.send(js_value))
         };
 
-        fut.await.map_err(Error::from)?;
+        fut.await.map_err(WorkerError::from_promise_err)?;
         Ok(())
     }
 }

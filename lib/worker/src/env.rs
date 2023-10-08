@@ -10,7 +10,7 @@ use worker_kv::KvStore;
 use crate::d1::Database;
 use crate::durable::ObjectNamespace;
 use crate::dynamic_dispatch::DynamicDispatcher;
-use crate::error::Error;
+use crate::error::WorkerError;
 use crate::fetcher::Fetcher;
 use crate::prelude::Bucket;
 #[cfg(feature = "queue")]
@@ -29,14 +29,15 @@ impl From<EnvSys> for Env {
 }
 
 impl Env {
-    fn get_binding<T: TryFrom<Object, Error = Error>>(&self, name: &str) -> Result<T> {
+    fn get_binding<T: TryFrom<Object>>(&self, name: &str) -> Result<T> {
         let binding = js_sys::Reflect::get(self.0.as_ref(), &JsValue::from(name))
-            .map_err(|_| Error::EnvBindingError(name.to_string()))?;
+            .map_err(|_| WorkerError::UndefinedBinding(name.to_string()))?;
         if binding.is_undefined() {
-            Err(Error::UndefinedBinding(name.to_string()))
+            Err(WorkerError::UndefinedBinding(name.to_string()))
         } else {
             let object = Object::from(binding);
-            T::try_from(object)
+            let name = object.constructor().name().as_string().unwrap_or_default();
+            T::try_from(object).map_err(|_| WorkerError::EnvBindingError(name))
         }
     }
 
@@ -92,7 +93,7 @@ impl Env {
     /// wrangler.toml file.
     #[cfg(feature = "d1")]
     pub fn d1(&self, binding: &str) -> Result<Database> {
-        self.get_binding(binding)
+        self.get_binding(binding).map_err(WorkerError::from)
     }
 
     #[doc(hidden)]
@@ -104,13 +105,12 @@ impl Env {
 pub struct StringBinding(String);
 
 impl TryFrom<Object> for StringBinding {
-    type Error = Error;
+    type Error = WorkerError;
 
     fn try_from(obj: Object) -> Result<Self> {
-        let js_string = obj.dyn_into::<JsString>().map_err(|obj| {
-            let name = obj.constructor().name().as_string().unwrap();
-            Error::BindingCast(name, "String".into())
-        })?;
+        let js_string = obj
+            .dyn_into::<JsString>()
+            .map_err(|_| WorkerError::BindingCast)?;
         Ok(Self(js_string.into()))
     }
 }

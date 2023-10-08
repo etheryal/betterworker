@@ -34,7 +34,7 @@ use wasm_bindgen_futures::future_to_promise;
 use crate::body::Body;
 use crate::date::Date;
 use crate::env::Env;
-use crate::error::Error;
+use crate::error::WorkerError;
 use crate::futures::SendJsFuture;
 use crate::http::{request, response};
 use crate::result::Result;
@@ -57,7 +57,11 @@ impl Stub {
             SendJsFuture::from(promise)
         };
 
-        let res = fut.await?.dyn_into()?;
+        let res = fut
+            .await
+            .map_err(WorkerError::from_promise_err)?
+            .dyn_into()
+            .map_err(WorkerError::from_cast_err)?;
         Ok(response::from_web_sys_response(res))
     }
 
@@ -69,7 +73,11 @@ impl Stub {
             SendJsFuture::from(promise)
         };
 
-        let res = fut.await?.dyn_into()?;
+        let res = fut
+            .await
+            .map_err(WorkerError::from_promise_err)?
+            .dyn_into()
+            .map_err(WorkerError::from_cast_err)?;
         Ok(response::from_web_sys_response(res))
     }
 }
@@ -81,7 +89,7 @@ impl Stub {
 pub struct ObjectNamespace(SendWrapper<EdgeObjectNamespace>);
 
 impl TryFrom<Object> for ObjectNamespace {
-    type Error = Error;
+    type Error = WorkerError;
 
     fn try_from(obj: Object) -> Result<Self> {
         const TYPE_NAME: &'static str = "DurableObjectNamespace";
@@ -89,10 +97,7 @@ impl TryFrom<Object> for ObjectNamespace {
         let data = if obj.constructor().name() == TYPE_NAME {
             obj.unchecked_into()
         } else {
-            return Err(Error::BindingCast(
-                TYPE_NAME.to_string(),
-                obj.constructor().name().as_string().unwrap(),
-            ));
+            return Err(WorkerError::BindingCast);
         };
         Ok(Self(SendWrapper::new(data)))
     }
@@ -116,7 +121,7 @@ impl ObjectNamespace {
     pub fn id_from_name(&self, name: &str) -> Result<ObjectId> {
         self.0
             .id_from_name(name)
-            .map_err(Error::from)
+            .map_err(WorkerError::from_js_err)
             .map(|id| ObjectId {
                 inner: SendWrapper::new(id),
                 namespace: Some(SendWrapper::new(self)),
@@ -135,7 +140,7 @@ impl ObjectNamespace {
     pub fn id_from_string(&self, hex_id: &str) -> Result<ObjectId> {
         self.0
             .id_from_string(hex_id)
-            .map_err(Error::from)
+            .map_err(WorkerError::from_js_err)
             .map(|id| ObjectId {
                 inner: SendWrapper::new(id),
                 namespace: Some(SendWrapper::new(self)),
@@ -148,7 +153,7 @@ impl ObjectNamespace {
     pub fn unique_id(&self) -> Result<ObjectId> {
         self.0
             .new_unique_id()
-            .map_err(Error::from)
+            .map_err(WorkerError::from_js_err)
             .map(|id| ObjectId {
                 inner: SendWrapper::new(id),
                 namespace: Some(SendWrapper::new(self)),
@@ -168,10 +173,11 @@ impl ObjectNamespace {
     /// <https://developers.cloudflare.com/workers/runtime-apis/durable-objects#restricting-objects-to-a-jurisdiction>
     pub fn unique_id_with_jurisdiction(&self, jd: &str) -> Result<ObjectId> {
         let options = Object::new();
-        js_sys::Reflect::set(&options, &JsValue::from("jurisdiction"), &jd.into())?;
+        js_sys::Reflect::set(&options, &JsValue::from("jurisdiction"), &jd.into())
+            .map_err(WorkerError::from_js_err)?;
         self.0
             .new_unique_id_with_options(&options)
-            .map_err(Error::from)
+            .map_err(WorkerError::from_js_err)
             .map(|id| ObjectId {
                 inner: SendWrapper::new(id),
                 namespace: Some(SendWrapper::new(self)),
@@ -191,13 +197,14 @@ impl ObjectId<'_> {
     pub fn get_stub(&self) -> Result<Stub> {
         self.namespace
             .as_ref()
-            .ok_or_else(|| JsValue::from("Cannot get stub from within a Durable Object"))
+            .ok_or_else(|| WorkerError::DurableObjectStub)
             .and_then(|n| {
-                Ok(Stub {
-                    inner: SendWrapper::new(n.0.get(&self.inner)?),
-                })
+                let data = n.0.get(&self.inner).map_err(WorkerError::from_js_err)?;
+                let stub = Stub {
+                    inner: SendWrapper::new(data),
+                };
+                Ok(stub)
             })
-            .map_err(Error::from)
     }
 }
 
@@ -281,7 +288,8 @@ impl Storage {
     ///
     /// Returns [Err] if the key does not exist.
     pub async fn get<T: serde::de::DeserializeOwned>(&self, key: &str) -> Result<T> {
-        let fut = SendJsFuture::from(self.inner.get(key)?);
+        let promise = self.inner.get(key).map_err(WorkerError::from_js_err)?;
+        let fut = SendJsFuture::from(promise);
         fut.await
             .and_then(|val| {
                 if val.is_undefined() {
@@ -290,28 +298,35 @@ impl Storage {
                     serde_wasm_bindgen::from_value(val).map_err(|e| JsValue::from(e.to_string()))
                 }
             })
-            .map_err(Error::from)
+            .map_err(WorkerError::from_js_err)
     }
 
     /// Retrieves the values associated with each of the provided keys.
     pub async fn get_multiple(&self, keys: Vec<impl Deref<Target = str>>) -> Result<Map> {
         let fut = {
-            let keys = self.inner.get_multiple(
-                keys.into_iter()
-                    .map(|key| JsValue::from(key.deref()))
-                    .collect(),
-            )?;
+            let keys = self
+                .inner
+                .get_multiple(
+                    keys.into_iter()
+                        .map(|key| JsValue::from(key.deref()))
+                        .collect(),
+                )
+                .map_err(WorkerError::from_js_err)?;
             SendJsFuture::from(keys)
         };
 
-        let keys = fut.await?;
-        keys.dyn_into::<Map>().map_err(Error::from)
+        let keys = fut.await.map_err(WorkerError::from_promise_err)?;
+        keys.dyn_into::<Map>().map_err(WorkerError::from_cast_err)
     }
 
     /// Stores the value and associates it with the given key.
     pub async fn put<T: Serialize>(&mut self, key: &str, value: T) -> Result<()> {
-        let fut = SendJsFuture::from(self.inner.put(key, serde_wasm_bindgen::to_value(&value)?)?);
-        fut.await.map_err(Error::from).map(|_| ())
+        let promise = self
+            .inner
+            .put(key, serde_wasm_bindgen::to_value(&value)?)
+            .map_err(WorkerError::from_js_err)?;
+        let fut = SendJsFuture::from(promise);
+        fut.await.map_err(WorkerError::from_promise_err).map(|_| ())
     }
 
     /// Takes a serializable struct and stores each of its keys and values to
@@ -320,23 +335,31 @@ impl Storage {
         let fut = {
             let values = serde_wasm_bindgen::to_value(&values)?;
             if !values.is_object() {
-                return Err(Error::MustPassInStructType);
+                return Err(WorkerError::MustPassInStructType);
             }
-            SendJsFuture::from(self.inner.put_multiple(values)?)
+            SendJsFuture::from(
+                self.inner
+                    .put_multiple(values)
+                    .map_err(WorkerError::from_js_err)?,
+            )
         };
-        fut.await.map_err(Error::from).map(|_| ())
+        fut.await.map_err(WorkerError::from_promise_err).map(|_| ())
     }
 
     /// Deletes the key and associated value. Returns true if the key existed or
     /// false if it didn't.
     pub async fn delete(&mut self, key: &str) -> Result<bool> {
-        let fut: SendJsFuture = self.inner.delete(key)?.into();
+        let fut: SendJsFuture = self
+            .inner
+            .delete(key)
+            .map_err(WorkerError::from_js_err)?
+            .into();
         fut.await
             .and_then(|jsv| {
                 jsv.as_bool()
                     .ok_or_else(|| JsValue::from("Promise did not return bool"))
             })
-            .map_err(Error::from)
+            .map_err(WorkerError::from_promise_err)
     }
 
     /// Deletes the provided keys and their associated values. Returns a count
@@ -348,7 +371,8 @@ impl Storage {
                 keys.into_iter()
                     .map(|key| JsValue::from(key.deref()))
                     .collect(),
-            )?
+            )
+            .map_err(WorkerError::from_js_err)?
             .into();
         fut.await
             .and_then(|jsv| {
@@ -356,7 +380,7 @@ impl Storage {
                     .map(|f| f as usize)
                     .ok_or_else(|| JsValue::from("Promise did not return number"))
             })
-            .map_err(Error::from)
+            .map_err(WorkerError::from_promise_err)
     }
 
     /// Deletes all keys and associated values, effectively deallocating all
@@ -364,8 +388,12 @@ impl Storage {
     /// the operation is still in flight, it may be that only a subset of
     /// the data is properly deleted.
     pub async fn delete_all(&mut self) -> Result<()> {
-        let fut: SendJsFuture = self.inner.delete_all()?.into();
-        fut.await.map(|_| ()).map_err(Error::from)
+        let fut: SendJsFuture = self
+            .inner
+            .delete_all()
+            .map_err(WorkerError::from_js_err)?
+            .into();
+        fut.await.map(|_| ()).map_err(WorkerError::from_promise_err)
     }
 
     /// Returns all keys and values associated with the current Durable Object
@@ -376,10 +404,10 @@ impl Storage {
     /// loaded into the Durable Object's memory, potentially hitting its [limit](https://developers.cloudflare.com/workers/platform/limits#durable-objects-limits).
     /// If that is a concern, use the alternate `list_with_options()` method.
     pub async fn list(&self) -> Result<Map> {
-        let fut: SendJsFuture = self.inner.list()?.into();
+        let fut: SendJsFuture = self.inner.list().map_err(WorkerError::from_js_err)?.into();
         fut.await
             .and_then(|jsv| jsv.dyn_into())
-            .map_err(Error::from)
+            .map_err(WorkerError::from_promise_err)
     }
 
     /// Returns keys associated with the current Durable Object according to the
@@ -387,11 +415,12 @@ impl Storage {
     pub async fn list_with_options(&self, opts: ListOptions<'_>) -> Result<Map> {
         let fut: SendJsFuture = self
             .inner
-            .list_with_options(serde_wasm_bindgen::to_value(&opts)?.into())?
+            .list_with_options(serde_wasm_bindgen::to_value(&opts)?.into())
+            .map_err(WorkerError::from_js_err)?
             .into();
         fut.await
             .and_then(|jsv| jsv.dyn_into())
-            .map_err(Error::from)
+            .map_err(WorkerError::from_promise_err)
     }
 
     /// Retrieves the current alarm time (if set) as integer milliseconds since
@@ -399,20 +428,25 @@ impl Storage {
     /// if it has failed and any retry has not begun. If no alarm is set,
     /// `get_alarm()` returns `None`.
     pub async fn get_alarm(&self) -> Result<Option<i64>> {
-        let fut: SendJsFuture = self.inner.get_alarm(JsValue::NULL.into())?.into();
+        let fut: SendJsFuture = self
+            .inner
+            .get_alarm(JsValue::NULL.into())
+            .map_err(WorkerError::from_js_err)?
+            .into();
         fut.await
             .map(|jsv| jsv.as_f64().map(|f| f as i64))
-            .map_err(Error::from)
+            .map_err(WorkerError::from_promise_err)
     }
 
     pub async fn get_alarm_with_options(&self, options: GetAlarmOptions) -> Result<Option<i64>> {
         let fut: SendJsFuture = self
             .inner
-            .get_alarm(serde_wasm_bindgen::to_value(&options)?.into())?
+            .get_alarm(serde_wasm_bindgen::to_value(&options)?.into())
+            .map_err(WorkerError::from_js_err)?
             .into();
         fut.await
             .map(|jsv| jsv.as_f64().map(|f| f as i64))
-            .map_err(Error::from)
+            .map_err(WorkerError::from_promise_err)
     }
 
     /// Sets the current alarm time to the given datetime.
@@ -427,9 +461,10 @@ impl Storage {
     pub async fn set_alarm(&self, scheduled_time: impl Into<ScheduledTime>) -> Result<()> {
         let fut: SendJsFuture = self
             .inner
-            .set_alarm(scheduled_time.into().schedule(), JsValue::NULL.into())?
+            .set_alarm(scheduled_time.into().schedule(), JsValue::NULL.into())
+            .map_err(WorkerError::from_js_err)?
             .into();
-        fut.await.map(|_| ()).map_err(Error::from)
+        fut.await.map(|_| ()).map_err(WorkerError::from_promise_err)
     }
 
     pub async fn set_alarm_with_options(
@@ -440,46 +475,31 @@ impl Storage {
             .set_alarm(
                 scheduled_time.into().schedule(),
                 serde_wasm_bindgen::to_value(&options)?.into(),
-            )?
+            )
+            .map_err(WorkerError::from_js_err)?
             .into();
-        fut.await.map(|_| ()).map_err(Error::from)
+        fut.await.map(|_| ()).map_err(WorkerError::from_promise_err)
     }
 
     /// Deletes the alarm if one exists. Does not cancel the alarm handler if it
     /// is currently executing.
     pub async fn delete_alarm(&self) -> Result<()> {
-        let fut: SendJsFuture = self.inner.delete_alarm(JsValue::NULL.into())?.into();
-        fut.await.map(|_| ()).map_err(Error::from)
+        let fut: SendJsFuture = self
+            .inner
+            .delete_alarm(JsValue::NULL.into())
+            .map_err(WorkerError::from_js_err)?
+            .into();
+        fut.await.map(|_| ()).map_err(WorkerError::from_promise_err)
     }
 
     pub async fn delete_alarm_with_options(&self, options: SetAlarmOptions) -> Result<()> {
         let fut: SendJsFuture = self
             .inner
-            .delete_alarm(serde_wasm_bindgen::to_value(&options)?.into())?
+            .delete_alarm(serde_wasm_bindgen::to_value(&options)?.into())
+            .map_err(WorkerError::from_js_err)?
             .into();
-        fut.await.map(|_| ()).map_err(Error::from)
+        fut.await.map(|_| ()).map_err(WorkerError::from_promise_err)
     }
-
-    // TODO(nilslice): follow up with runtime team on transaction API in general
-    // This function doesn't work on stable yet because the wasm_bindgen `Closure`
-    // type is still nightly-gated #[allow(dead_code)]
-    // async fn transaction<F>(&mut self, closure: fn(Transaction) -> F) ->
-    // Result<()> where
-    //     F: Future<Output = Result<()>> + 'static,
-    // {
-    //     let mut clos = |t: Transaction| {
-    //         future_to_promise(async move {
-    //             closure(t)
-    //                 .await
-    //                 .map_err(JsValue::from)
-    //                 .map(|_| JsValue::NULL)
-    //         })
-    //     };
-    //     JsFuture::from(self.inner.transaction_internal(&mut clos)?)
-    //         .await
-    //         .map_err(Error::from)
-    //         .map(|_| ())
-    // }
 }
 
 #[allow(dead_code)]
@@ -490,7 +510,9 @@ struct Transaction {
 #[allow(dead_code)]
 impl Transaction {
     async fn get<T: DeserializeOwned>(&self, key: &str) -> Result<T> {
-        let fut = SendJsFuture::from(self.inner.get(key)?);
+        let promise = self.inner.get(key).map_err(WorkerError::from_js_err)?;
+        let fut = SendJsFuture::from(promise);
+
         fut.await
             .and_then(|val| {
                 if val.is_undefined() {
@@ -499,26 +521,33 @@ impl Transaction {
                     serde_wasm_bindgen::from_value(val).map_err(std::convert::Into::into)
                 }
             })
-            .map_err(Error::from)
+            .map_err(WorkerError::from_promise_err)
     }
 
     async fn get_multiple(&self, keys: Vec<impl Deref<Target = str>>) -> Result<Map> {
         let fut = {
-            let keys = self.inner.get_multiple(
-                keys.into_iter()
-                    .map(|key| JsValue::from(key.deref()))
-                    .collect(),
-            )?;
+            let keys = self
+                .inner
+                .get_multiple(
+                    keys.into_iter()
+                        .map(|key| JsValue::from(key.deref()))
+                        .collect(),
+                )
+                .map_err(WorkerError::from_js_err)?;
             SendJsFuture::from(keys)
         };
 
-        let keys = fut.await?;
-        keys.dyn_into::<Map>().map_err(Error::from)
+        let keys = fut.await.map_err(WorkerError::from_promise_err)?;
+        keys.dyn_into::<Map>().map_err(WorkerError::from_cast_err)
     }
 
     async fn put<T: Serialize>(&mut self, key: &str, value: T) -> Result<()> {
-        let fut = SendJsFuture::from(self.inner.put(key, serde_wasm_bindgen::to_value(&value)?)?);
-        fut.await.map_err(Error::from).map(|_| ())
+        let promise = self
+            .inner
+            .put(key, serde_wasm_bindgen::to_value(&value)?)
+            .map_err(WorkerError::from_js_err)?;
+        let fut = SendJsFuture::from(promise);
+        fut.await.map_err(WorkerError::from_promise_err).map(|_| ())
     }
 
     // Each key-value pair in the serialized object will be added to the storage
@@ -526,23 +555,31 @@ impl Transaction {
         let fut = {
             let values = serde_wasm_bindgen::to_value(&values)?;
             if !values.is_object() {
-                return Err(Error::MustPassInStructType);
+                return Err(WorkerError::MustPassInStructType);
             }
 
-            SendJsFuture::from(self.inner.put_multiple(values)?)
+            let promise = self
+                .inner
+                .put_multiple(values)
+                .map_err(WorkerError::from_js_err)?;
+            SendJsFuture::from(promise)
         };
 
-        fut.await.map_err(Error::from).map(|_| ())
+        fut.await.map_err(WorkerError::from_promise_err).map(|_| ())
     }
 
     async fn delete(&mut self, key: &str) -> Result<bool> {
-        let fut: SendJsFuture = self.inner.delete(key)?.into();
+        let fut: SendJsFuture = self
+            .inner
+            .delete(key)
+            .map_err(WorkerError::from_js_err)?
+            .into();
         fut.await
             .and_then(|jsv| {
                 jsv.as_bool()
                     .ok_or_else(|| JsValue::from("Promise did not return bool"))
             })
-            .map_err(Error::from)
+            .map_err(WorkerError::from_promise_err)
     }
 
     async fn delete_multiple(&mut self, keys: Vec<impl Deref<Target = str>>) -> Result<usize> {
@@ -552,7 +589,8 @@ impl Transaction {
                 keys.into_iter()
                     .map(|key| JsValue::from(key.deref()))
                     .collect(),
-            )?
+            )
+            .map_err(WorkerError::from_js_err)?
             .into();
         fut.await
             .and_then(|jsv| {
@@ -560,33 +598,38 @@ impl Transaction {
                     .map(|f| f as usize)
                     .ok_or_else(|| JsValue::from("Promise did not return number"))
             })
-            .map_err(Error::from)
+            .map_err(WorkerError::from_promise_err)
     }
 
     async fn delete_all(&mut self) -> Result<()> {
-        let fut: SendJsFuture = self.inner.delete_all()?.into();
-        fut.await.map(|_| ()).map_err(Error::from)
+        let fut: SendJsFuture = self
+            .inner
+            .delete_all()
+            .map_err(WorkerError::from_js_err)?
+            .into();
+        fut.await.map(|_| ()).map_err(WorkerError::from_promise_err)
     }
 
     async fn list(&self) -> Result<Map> {
-        let fut: SendJsFuture = self.inner.list()?.into();
+        let fut: SendJsFuture = self.inner.list().map_err(WorkerError::from_js_err)?.into();
         fut.await
             .and_then(|jsv| jsv.dyn_into())
-            .map_err(Error::from)
+            .map_err(WorkerError::from_promise_err)
     }
 
     async fn list_with_options(&self, opts: ListOptions<'_>) -> Result<Map> {
         let fut: SendJsFuture = self
             .inner
-            .list_with_options(serde_wasm_bindgen::to_value(&opts)?.into())?
+            .list_with_options(serde_wasm_bindgen::to_value(&opts)?.into())
+            .map_err(WorkerError::from_js_err)?
             .into();
         fut.await
             .and_then(|jsv| jsv.dyn_into())
-            .map_err(Error::from)
+            .map_err(WorkerError::from_promise_err)
     }
 
     fn rollback(&mut self) -> Result<()> {
-        self.inner.rollback().map_err(Error::from)
+        self.inner.rollback().map_err(WorkerError::from_js_err)
     }
 }
 

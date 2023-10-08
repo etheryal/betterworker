@@ -5,8 +5,6 @@ use betterworker::prelude::*;
 use betterworker::wasm_bindgen;
 use serde::Serialize;
 
-use crate::ensure;
-
 #[durable_object]
 pub struct MyClass {
     state: State,
@@ -19,10 +17,10 @@ impl DurableObject for MyClass {
         Self { state, number: 0 }
     }
 
-    async fn fetch(&mut self, req: Request<Body>) -> Result<Response<Body>, Error> {
+    async fn fetch(&mut self, req: Request<Body>) -> Result<Response<Body>, WorkerError> {
         let handler = async move {
             match req.uri().path() {
-                "/hello" => Ok::<_, Error>(Response::new("Hello!".into())),
+                "/hello" => Ok::<_, WorkerError>(Response::new("Hello!".into())),
                 "/storage" => {
                     let mut storage = self.state.storage();
                     let map = [("one".to_string(), 1), ("two".to_string(), 2)]
@@ -37,33 +35,32 @@ impl DurableObject for MyClass {
                     let mut keys = vec![];
 
                     for key in list.keys() {
-                        let key = key?
-                            .as_string()
-                            .ok_or_else(|| "Key wasn't a string".to_string())?;
+                        let key = key.unwrap().as_string().expect("Key wasn't a string");
                         keys.push(key);
                     }
 
-                    ensure!(
+                    assert!(
                         keys == vec!["anything", "array", "map"],
-                        format!("Didn't list all of the keys: {keys:?}")
+                        "Didn't list all of the keys: {keys:?}"
                     );
                     let vals = storage
                         .get_multiple(keys)
                         .await
-                        .map_err(|e| e.to_string() + " -- get_multiple")?;
-                    ensure!(
+                        .map_err(|e| e.to_string() + " -- get_multiple")
+                        .unwrap();
+                    assert!(
                         serde_wasm_bindgen::from_value::<Option<i32>>(
                             vals.get(&"anything".into())
                         )? == Some(45),
                         "Didn't get the right Option<i32> using get_multiple"
                     );
-                    ensure!(
+                    assert!(
                         serde_wasm_bindgen::from_value::<[(String, i32); 2]>(
                             vals.get(&"array".into())
                         )? == [("one".to_string(), 1), ("two".to_string(), 2)],
                         "Didn't get the right array using get_multiple"
                     );
-                    ensure!(
+                    assert!(
                         serde_wasm_bindgen::from_value::<HashMap<String, i32>>(
                             vals.get(&"map".into())
                         )? == map,
@@ -82,11 +79,11 @@ impl DurableObject for MyClass {
                         })
                         .await?;
 
-                    ensure!(
+                    assert!(
                         storage.get::<String>("thing").await? == "Hello there",
                         "Didn't put the right thing with put_multiple"
                     );
-                    ensure!(
+                    assert!(
                         storage.get::<i32>("other").await? == 56,
                         "Didn't put the right thing with put_multiple"
                     );

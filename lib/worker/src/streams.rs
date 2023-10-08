@@ -10,7 +10,7 @@ use wasm_bindgen::{JsCast, JsValue};
 use wasm_streams::readable::IntoStream;
 use web_sys::ReadableStream;
 
-use crate::error::Error;
+use crate::error::WorkerError;
 use crate::result::Result;
 
 #[pin_project]
@@ -26,7 +26,7 @@ impl Stream for ByteStream {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.project();
         let item = match futures_util::ready!(this.inner.poll_next(cx)) {
-            Some(res) => res.map(Uint8Array::from).map_err(Error::from),
+            Some(res) => res.map(Uint8Array::from).map_err(WorkerError::from_js_err),
             None => return Poll::Ready(None),
         };
 
@@ -71,7 +71,7 @@ impl Stream for FixedLengthStream {
             *this.bytes_read += chunk.len() as u64;
 
             if *this.bytes_read > *this.length {
-                Some(Err(Error::FixedLengthStreamLengthError(
+                Some(Err(WorkerError::FixedLengthStreamLengthError(
                     *this.length,
                     *this.bytes_read,
                 )))
@@ -79,7 +79,7 @@ impl Stream for FixedLengthStream {
                 Some(Ok(chunk))
             }
         } else if *this.bytes_read != *this.length {
-            Some(Err(Error::FixedLengthStreamLengthError(
+            Some(Err(WorkerError::FixedLengthStreamLengthError(
                 *this.length,
                 *this.bytes_read,
             )))

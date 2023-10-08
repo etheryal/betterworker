@@ -5,7 +5,7 @@ use js_sys::Object;
 use send_wrapper::SendWrapper;
 use wasm_bindgen::{JsCast, JsValue};
 
-use crate::error::Error;
+use crate::error::WorkerError;
 use crate::fetcher::Fetcher;
 use crate::result::Result;
 
@@ -27,7 +27,10 @@ impl DynamicDispatcher {
     /// Gets a [Fetcher] for a Worker inside of the dispatch namespace based of
     /// the name specified.
     pub fn get(&self, name: impl Into<String>) -> Result<Fetcher> {
-        let fetcher_sys = self.0.get(name.into(), JsValue::undefined())?;
+        let fetcher_sys = self
+            .0
+            .get(name.into(), JsValue::undefined())
+            .map_err(WorkerError::from_js_err)?;
         Ok(fetcher_sys.into())
     }
 }
@@ -39,7 +42,7 @@ impl AsRef<JsValue> for DynamicDispatcher {
 }
 
 impl TryFrom<Object> for DynamicDispatcher {
-    type Error = Error;
+    type Error = WorkerError;
 
     fn try_from(obj: Object) -> Result<Self> {
         const TYPE_NAME: &'static str = "DynamicDispatcher";
@@ -47,10 +50,7 @@ impl TryFrom<Object> for DynamicDispatcher {
         let data = if obj.constructor().name() == TYPE_NAME {
             obj.unchecked_into()
         } else {
-            return Err(Error::BindingCast(
-                TYPE_NAME.to_string(),
-                obj.constructor().name().as_string().unwrap(),
-            ));
+            return Err(WorkerError::BindingCast);
         };
         Ok(Self(SendWrapper::new(data)))
     }

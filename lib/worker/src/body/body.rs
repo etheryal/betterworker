@@ -10,10 +10,10 @@ use wasm_bindgen::JsCast;
 
 use crate::body::wasm::WasmStreamBody;
 use crate::body::HttpBody;
-use crate::error::Error;
+use crate::error::WorkerError;
 use crate::futures::SendJsFuture;
 
-type BoxBody = http_body::combinators::UnsyncBoxBody<Bytes, Error>;
+type BoxBody = http_body::combinators::UnsyncBoxBody<Bytes, WorkerError>;
 
 fn try_downcast<T, K>(k: K) -> Result<T, K>
 where
@@ -63,7 +63,7 @@ impl Body {
 
         try_downcast(body).unwrap_or_else(|body| {
             Self(BodyInner::BoxBody(
-                body.map_err(|_| Error::BadEncoding).boxed_unsync(),
+                body.map_err(|_| WorkerError::BadEncoding).boxed_unsync(),
             ))
         })
     }
@@ -85,7 +85,7 @@ impl Body {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn bytes(self) -> Result<Bytes, Error> {
+    pub async fn bytes(self) -> Result<Bytes, WorkerError> {
         async fn array_buffer_to_bytes(
             buf: Result<js_sys::Promise, wasm_bindgen::JsValue>,
         ) -> Bytes {
@@ -116,12 +116,12 @@ impl Body {
     /// let text = body.text().await?;
     /// # Ok(())
     /// # }
-    pub async fn text(self) -> Result<String, Error> {
+    pub async fn text(self) -> Result<String, WorkerError> {
         // JS strings are UTF-16 so using the JS function for `text` would introduce
         // unnecessary overhead
         self.bytes()
             .await
-            .and_then(|buf| String::from_utf8(buf.to_vec()).map_err(|_| Error::BadEncoding))
+            .and_then(|buf| String::from_utf8(buf.to_vec()).map_err(|_| WorkerError::BadEncoding))
     }
 
     /// Get the full body as JSON.
@@ -143,10 +143,10 @@ impl Body {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn json<B: DeserializeOwned>(self) -> Result<B, Error> {
+    pub async fn json<B: DeserializeOwned>(self) -> Result<B, WorkerError> {
         self.bytes()
             .await
-            .and_then(|buf| serde_json::from_slice(&buf).map_err(Error::SerdeJsonError))
+            .and_then(|buf| serde_json::from_slice(&buf).map_err(WorkerError::SerdeJsonError))
     }
 
     pub(crate) fn is_none(&self) -> bool {
@@ -247,7 +247,7 @@ body_from_impl!(Bytes);
 
 impl HttpBody for Body {
     type Data = Bytes;
-    type Error = Error;
+    type Error = WorkerError;
 
     #[inline]
     fn poll_data(
@@ -291,7 +291,7 @@ impl HttpBody for Body {
 }
 
 impl Stream for Body {
-    type Item = Result<Bytes, Error>;
+    type Item = Result<Bytes, WorkerError>;
 
     #[inline]
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {

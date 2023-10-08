@@ -6,7 +6,7 @@ use send_wrapper::SendWrapper;
 use wasm_bindgen::{JsCast, JsValue};
 
 use crate::body::Body;
-use crate::error::Error;
+use crate::error::WorkerError;
 use crate::futures::SendJsFuture;
 use crate::http::{request, response};
 use crate::result::Result;
@@ -25,7 +25,8 @@ impl Fetcher {
             SendJsFuture::from(promise)
         };
 
-        let res = fut.await?.dyn_into()?;
+        let promise = fut.await.map_err(WorkerError::from_promise_err)?;
+        let res = promise.dyn_into().map_err(WorkerError::from_cast_err)?;
         Ok(response::from_web_sys_response(res))
     }
 }
@@ -43,7 +44,7 @@ impl From<FetcherSys> for Fetcher {
 }
 
 impl TryFrom<Object> for Fetcher {
-    type Error = Error;
+    type Error = WorkerError;
 
     fn try_from(obj: Object) -> Result<Self> {
         const TYPE_NAME: &'static str = "Fetcher";
@@ -51,10 +52,7 @@ impl TryFrom<Object> for Fetcher {
         let data = if obj.constructor().name() == TYPE_NAME {
             obj.unchecked_into()
         } else {
-            return Err(Error::BindingCast(
-                TYPE_NAME.to_string(),
-                obj.constructor().name().as_string().unwrap(),
-            ));
+            return Err(WorkerError::BindingCast);
         };
         Ok(Self(SendWrapper::new(data)))
     }

@@ -16,7 +16,7 @@ use web_sys::{
     ReadableStream, ReadableStreamDefaultReader, WritableStream, WritableStreamDefaultWriter,
 };
 
-use crate::error::Error;
+use crate::error::WorkerError;
 use crate::r2::js_object;
 
 enum Reading {
@@ -82,10 +82,10 @@ impl Socket {
 
     /// Closes the TCP socket. Both the readable and writable streams are
     /// forcibly closed.
-    pub async fn close(&mut self) -> Result<(), Error> {
+    pub async fn close(&mut self) -> Result<(), WorkerError> {
         let future = SendWrapper::new(JsFuture::from(self.0.socket.close()));
         wrap_send(async move {
-            future.await?;
+            future.await.map_err(WorkerError::from_promise_err)?;
             Ok(())
         })
         .await
@@ -93,10 +93,10 @@ impl Socket {
 
     /// This Future is resolved when the socket is closed
     /// and is rejected if the socket encounters an error.
-    pub async fn closed(&self) -> Result<(), Error> {
+    pub async fn closed(&self) -> Result<(), WorkerError> {
         let future = SendWrapper::new(JsFuture::from(self.0.socket.closed()));
         wrap_send(async move {
-            future.await?;
+            future.await.map_err(WorkerError::from_promise_err)?;
             Ok(())
         })
         .await
@@ -347,7 +347,7 @@ impl ConnectionBuilder {
 
     /// Open the connection to `hostname` on port `port`, returning a
     /// [`Socket`](Socket).
-    pub fn connect(self, hostname: impl Into<String>, port: u16) -> Result<Socket, Error> {
+    pub fn connect(self, hostname: impl Into<String>, port: u16) -> Result<Socket, WorkerError> {
         let address: JsValue = js_object!(
             "hostname" => JsObject::from(JsString::from(hostname.into())),
             "port" => JsNumber::from(port)

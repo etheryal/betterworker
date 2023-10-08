@@ -3,27 +3,24 @@ use wasm_bindgen::{JsCast, JsValue};
 
 #[derive(Error, Debug)]
 #[non_exhaustive]
-pub enum Error {
+pub enum WorkerError {
     #[error("content-type mismatch")]
     BadEncoding,
 
     #[error("body has already been read")]
     BodyUsed,
 
-    #[error("Env does not contain binding `{0}`")]
+    #[error("Failed to obtain environment binding `{0}`")]
     EnvBindingError(String),
 
     #[error("invalid range")]
     InvalidRange,
 
-    #[error("route has no corresponding shared data")]
-    RouteNoDataError,
-
     #[error("Binding `{0}` is undefined.")]
     UndefinedBinding(String),
 
-    #[error("Binding cannot be cast to the type {0} from {1}")]
-    BindingCast(String, String),
+    #[error("Binding cannot be cast")]
+    BindingCast,
 
     #[error("Must pass in a struct type")]
     MustPassInStructType,
@@ -46,20 +43,37 @@ pub enum Error {
     #[error(transparent)]
     SerdeJsonError(#[from] serde_json::Error),
 
-    #[cfg(feature = "queue")]
-    #[error("serde_wasm_bindgen error")]
-    SerdeWasmBindgenError(send_wrapper::SendWrapper<serde_wasm_bindgen::Error>),
+    #[error("serde-wasm-bindgen error: {0}")]
+    SerdeWasmBindgenError(String),
 
-    #[error("{0}")]
-    Custom(String),
+    #[error("worker-kv error: {0}")]
+    WorkerKvError(String),
+
+    #[error("await promise error: {0}")]
+    AwaitPromise(String),
+
+    #[error("javascript error: {0}")]
+    JsError(String),
+
+    #[error("Failed to cast a JsValue")]
+    JsCast,
+
+    #[error("Cannot get stub from within a Durable Object")]
+    DurableObjectStub,
+
+    #[error("Invalid message batch. Failed to get id from message.")]
+    InvalidMessageBatch,
+
+    #[error(transparent)]
+    D1Error(#[from] betterworker_d1::error::DatabaseError),
 }
 
-impl From<JsValue> for Error {
-    fn from(v: JsValue) -> Self {
-        let message = v
+impl WorkerError {
+    pub(crate) fn from_promise_err(err: JsValue) -> Self {
+        let message = err
             .as_string()
             .or_else(|| {
-                v.dyn_ref::<js_sys::Error>().map(|e| {
+                err.dyn_ref::<js_sys::Error>().map(|e| {
                     format!(
                         "{} Message: {} Cause: {:?}",
                         e.to_string(),
@@ -68,33 +82,74 @@ impl From<JsValue> for Error {
                     )
                 })
             })
-            .unwrap_or_else(|| format!("Unknown Javascript error: {:?}", v));
-        Self::Custom(message)
+            .unwrap_or_else(|| format!("Unknown Javascript error: {:?}", err));
+        Self::AwaitPromise(message)
+    }
+
+    pub(crate) fn from_js_err(err: JsValue) -> Self {
+        let message = err
+            .as_string()
+            .or_else(|| {
+                err.dyn_ref::<js_sys::Error>().map(|e| {
+                    format!(
+                        "{} Message: {} Cause: {:?}",
+                        e.to_string(),
+                        e.message(),
+                        e.cause()
+                    )
+                })
+            })
+            .unwrap_or_else(|| format!("Unknown Javascript error: {:?}", err));
+        Self::JsError(message)
+    }
+
+    pub(crate) fn from_cast_err(_: JsValue) -> Self {
+        Self::JsCast
     }
 }
 
-impl From<worker_kv::KvError> for Error {
+impl From<worker_kv::KvError> for WorkerError {
     fn from(e: worker_kv::KvError) -> Self {
         let val: JsValue = e.into();
-        val.into()
+        let message = val
+            .as_string()
+            .or_else(|| {
+                val.dyn_ref::<js_sys::Error>().map(|e| {
+                    format!(
+                        "{} Message: {} Cause: {:?}",
+                        e.to_string(),
+                        e.message(),
+                        e.cause()
+                    )
+                })
+            })
+            .unwrap_or_else(|| format!("Unknown worker-kv error: {:?}", val));
+        WorkerError::WorkerKvError(message)
     }
 }
 
-impl From<serde_wasm_bindgen::Error> for Error {
+impl From<serde_wasm_bindgen::Error> for WorkerError {
     fn from(e: serde_wasm_bindgen::Error) -> Self {
         let val: JsValue = e.into();
-        val.into()
+        let message = val
+            .as_string()
+            .or_else(|| {
+                val.dyn_ref::<js_sys::Error>().map(|e| {
+                    format!(
+                        "{} Message: {} Cause: {:?}",
+                        e.to_string(),
+                        e.message(),
+                        e.cause()
+                    )
+                })
+            })
+            .unwrap_or_else(|| format!("Unknown serde-wasm-bindgen error: {:?}", val));
+        WorkerError::SerdeWasmBindgenError(message)
     }
 }
 
-impl From<String> for Error {
-    fn from(s: String) -> Self {
-        Self::Custom(s)
-    }
-}
-
-impl From<Error> for JsValue {
-    fn from(e: Error) -> Self {
+impl From<WorkerError> for JsValue {
+    fn from(e: WorkerError) -> Self {
         JsValue::from_str(&e.to_string())
     }
 }

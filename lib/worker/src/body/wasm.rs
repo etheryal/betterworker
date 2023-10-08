@@ -9,7 +9,7 @@ use send_wrapper::SendWrapper;
 use wasm_bindgen::JsCast;
 use wasm_streams::readable::IntoStream;
 
-use crate::error::Error;
+use crate::error::WorkerError;
 
 /// Body wrapping a JS `ReadableStream`.
 pub(super) struct WasmStreamBody(SendWrapper<IntoStream<'static>>);
@@ -23,7 +23,7 @@ impl WasmStreamBody {
 
 impl http_body::Body for WasmStreamBody {
     type Data = Bytes;
-    type Error = Error;
+    type Error = WorkerError;
 
     #[inline]
     fn poll_data(
@@ -32,7 +32,7 @@ impl http_body::Body for WasmStreamBody {
         self.0
             .poll_next_unpin(cx)
             .map_ok(|buf| js_sys::Uint8Array::from(buf).to_vec().into())
-            .map_err(Error::from)
+            .map_err(WorkerError::from_js_err)
     }
 
     #[inline]

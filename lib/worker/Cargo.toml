@@ -32,6 +32,7 @@ bytes = "1.4.0"
 send_wrapper = { version = "0.6.0", features = ["futures"] }
 thiserror = "1.0.44"
 tokio = { version = "1.30.0", default-features = false }
+betterworker-d1 = { workspace = true, optional = true }
 
 [dependencies.web-sys]
 version = "0.3.64"
@@ -42,7 +43,7 @@ features = [
 
 [features]
 queue = ["betterworker-macros/queue", "betterworker-sys/queue"]
-d1 = ["betterworker-sys/d1"]
+d1 = ["dep:betterworker-d1"]
 
 [dev-dependencies]
 static_assertions = "1.1.0"

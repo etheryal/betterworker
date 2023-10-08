@@ -12,14 +12,14 @@ pub use wasm_bindgen;
 #[doc(hidden)]
 pub use wasm_bindgen_futures;
 pub use worker_kv as kv;
+#[cfg(feature = "d1")]
+pub use betterworker_d1 as d1;
 
 pub mod abort;
 pub mod body;
 pub mod cache;
 pub mod cf;
 pub mod context;
-#[cfg(feature = "d1")]
-pub mod d1;
 pub mod date;
 pub mod delay;
 pub mod durable;

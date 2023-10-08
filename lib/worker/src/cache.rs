@@ -6,6 +6,7 @@ use wasm_bindgen::JsCast;
 use crate::body::Body;
 use crate::futures::SendJsFuture;
 use crate::http::{request, response};
+use crate::prelude::WorkerError;
 use crate::result::Result;
 
 /// Provides access to the [Cache API](https://developers.cloudflare.com/workers/runtime-apis/cache).
@@ -92,7 +93,7 @@ impl Cache {
             SendJsFuture::from(promise)
         };
 
-        fut.await?;
+        fut.await.map_err(WorkerError::from_promise_err)?;
         Ok(())
     }
 
@@ -138,7 +139,7 @@ impl Cache {
         };
 
         // `match` returns either a response or undefined
-        let result = fut.await?;
+        let result = fut.await.map_err(WorkerError::from_promise_err)?;
         if result.is_undefined() {
             Ok(None)
         } else {
@@ -169,7 +170,7 @@ impl Cache {
             SendJsFuture::from(promise)
         };
 
-        let result = fut.await?;
+        let result = fut.await.map_err(WorkerError::from_promise_err)?;
         // Unwrap is safe because we know this is a boolean
         // https://developers.cloudflare.com/workers/runtime-apis/cache#delete
         if result.as_bool().unwrap() {

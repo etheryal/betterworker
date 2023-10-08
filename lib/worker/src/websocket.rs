@@ -13,7 +13,7 @@ use wasm_bindgen::convert::FromWasmAbi;
 use wasm_bindgen::prelude::Closure;
 use wasm_bindgen::JsCast;
 
-use crate::error::Error;
+use crate::error::WorkerError;
 use crate::fetch::fetch;
 use crate::result::Result;
 pub use crate::websocket::ws_events::{CloseEvent, MessageEvent, WebsocketEvent};
@@ -29,8 +29,8 @@ impl WebSocketPair {
     /// Creates a new `WebSocketPair`.
     pub fn new() -> Result<Self> {
         let mut pair = WebSocketPairSys::new();
-        let client = pair.client()?.into();
-        let server = pair.server()?.into();
+        let client = pair.client().map_err(WorkerError::from_js_err)?.into();
+        let server = pair.server().map_err(WorkerError::from_js_err)?.into();
         Ok(Self { client, server })
     }
 }
@@ -89,14 +89,14 @@ impl WebSocket {
 
         match res.extensions_mut().remove::<WebSocket>() {
             Some(ws) => Ok(ws),
-            None => Err(Error::WebSocketConnectionError),
+            None => Err(WorkerError::WebSocketConnectionError),
         }
     }
 
     /// Accepts the connection, allowing for messages to be sent to and from the
     /// `WebSocket`.
     pub fn accept(&self) -> Result<()> {
-        self.socket.accept().map_err(Error::from)
+        self.socket.accept().map_err(WorkerError::from_js_err)
     }
 
     /// Serialize data into a string using serde and send it through the
@@ -110,13 +110,15 @@ impl WebSocket {
     pub fn send_with_str<S: AsRef<str>>(&self, data: S) -> Result<()> {
         self.socket
             .send_with_str(data.as_ref())
-            .map_err(Error::from)
+            .map_err(WorkerError::from_js_err)
     }
 
     /// Sends raw binary data through the `WebSocket`.
     pub fn send_with_bytes<D: AsRef<[u8]>>(&self, bytes: D) -> Result<()> {
         let slice = bytes.as_ref();
-        self.socket.send_with_u8_array(slice).map_err(Error::from)
+        self.socket
+            .send_with_u8_array(slice)
+            .map_err(WorkerError::from_js_err)
     }
 
     /// Closes this channel.
@@ -139,7 +141,7 @@ impl WebSocket {
         } else {
             self.socket.close()
         }
-        .map_err(Error::from)
+        .map_err(WorkerError::from_js_err)
     }
 
     /// Internal utility method to avoid verbose code.
@@ -156,7 +158,7 @@ impl WebSocket {
         let js_callback = Closure::wrap(Box::new(fun) as Box<dyn FnMut(T)>);
         self.socket
             .add_event_listener_with_callback(r#type, js_callback.as_ref().unchecked_ref())
-            .map_err(Error::from)?;
+            .map_err(WorkerError::from_js_err)?;
 
         Ok(js_callback)
     }
@@ -169,7 +171,7 @@ impl WebSocket {
     ) -> Result<()> {
         self.socket
             .remove_event_listener_with_callback(r#type, js_callback.as_ref().unchecked_ref())
-            .map_err(Error::from)
+            .map_err(WorkerError::from_js_err)
     }
 
     /// Gets an implementation [`Stream`](futures::Stream) that yields events
@@ -195,7 +197,7 @@ impl WebSocket {
         let error_closure =
             self.add_event_handler("error", move |event: web_sys::ErrorEvent| {
                 let error = event.error();
-                tx.unbounded_send(Err(error.into())).unwrap();
+                tx.unbounded_send(Err(WorkerError::from_js_err(error))).unwrap();
             })?;
 
         Ok(EventStream {
@@ -320,7 +322,7 @@ pub mod ws_events {
     use serde::de::DeserializeOwned;
     use wasm_bindgen::JsValue;
 
-    use crate::error::Error;
+    use crate::error::WorkerError;
 
     /// Events that can be yielded by a [`EventStream`](crate::EventStream).
     #[derive(Debug, Clone)]
@@ -370,9 +372,9 @@ pub mod ws_events {
         pub fn json<T: DeserializeOwned>(&self) -> crate::result::Result<T> {
             let text = match self.text() {
                 Some(text) => text,
-                None => return Err(Error::MessageEventNotText),
+                None => return Err(WorkerError::MessageEventNotText),
             };
-            serde_json::from_str(&text).map_err(Error::from)
+            serde_json::from_str(&text).map_err(WorkerError::from)
         }
     }
 

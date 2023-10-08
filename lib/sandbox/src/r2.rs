@@ -7,7 +7,7 @@ use futures_util::StreamExt;
 
 static SEEDED: Mutex<bool> = Mutex::new(false);
 
-pub async fn seed_bucket(bucket: &Bucket) -> Result<(), Error> {
+pub async fn seed_bucket(bucket: &Bucket) -> Result<(), WorkerError> {
     {
         let mut seeded = SEEDED.lock().unwrap();
 
@@ -29,7 +29,7 @@ pub async fn seed_bucket(bucket: &Bucket) -> Result<(), Error> {
     Ok(())
 }
 
-pub async fn list_empty(env: &Env) -> Result<Response<Body>, Error> {
+pub async fn list_empty(env: &Env) -> Result<Response<Body>, WorkerError> {
     let bucket = env.bucket("EMPTY_BUCKET")?;
 
     let objects = bucket.list().execute().await?;
@@ -40,7 +40,7 @@ pub async fn list_empty(env: &Env) -> Result<Response<Body>, Error> {
     Ok(Response::new("ok".into()))
 }
 
-pub async fn list(env: &Env) -> Result<Response<Body>, Error> {
+pub async fn list(env: &Env) -> Result<Response<Body>, WorkerError> {
     let bucket = env.bucket("SEEDED_BUCKET")?;
     seed_bucket(&bucket).await?;
 
@@ -93,7 +93,7 @@ pub async fn list(env: &Env) -> Result<Response<Body>, Error> {
     Ok(Response::new("ok".into()))
 }
 
-pub async fn get_empty(env: &Env) -> Result<Response<Body>, Error> {
+pub async fn get_empty(env: &Env) -> Result<Response<Body>, WorkerError> {
     let bucket = env.bucket("EMPTY_BUCKET")?;
 
     let object = bucket.get("doesnt-exist").execute().await?;
@@ -115,7 +115,7 @@ pub async fn get_empty(env: &Env) -> Result<Response<Body>, Error> {
     Ok(Response::new("ok".into()))
 }
 
-pub async fn get(env: &Env) -> Result<Response<Body>, Error> {
+pub async fn get(env: &Env) -> Result<Response<Body>, WorkerError> {
     let bucket = env.bucket("SEEDED_BUCKET")?;
     seed_bucket(&bucket).await?;
 
@@ -136,7 +136,7 @@ pub async fn get(env: &Env) -> Result<Response<Body>, Error> {
     Ok(Response::new("ok".into()))
 }
 
-pub async fn put(env: &Env) -> Result<Response<Body>, Error> {
+pub async fn put(env: &Env) -> Result<Response<Body>, WorkerError> {
     let bucket = env.bucket("PUT_BUCKET")?;
 
     // R2 requires that we use a fixed-length-stream for the body.
@@ -169,7 +169,7 @@ pub async fn put(env: &Env) -> Result<Response<Body>, Error> {
     Ok(Response::new("ok".into()))
 }
 
-pub async fn put_properties(env: &Env) -> Result<Response<Body>, Error> {
+pub async fn put_properties(env: &Env) -> Result<Response<Body>, WorkerError> {
     let bucket = env.bucket("PUT_BUCKET")?;
     let (http_metadata, custom_metadata, object_with_props) =
         put_full_properties("with_props", &bucket).await?;
@@ -182,7 +182,7 @@ pub async fn put_properties(env: &Env) -> Result<Response<Body>, Error> {
     Ok(Response::new("ok".into()))
 }
 
-pub async fn put_multipart(env: &Env) -> Result<Response<Body>, Error> {
+pub async fn put_multipart(env: &Env) -> Result<Response<Body>, WorkerError> {
     const R2_MULTIPART_CHUNK_MIN_SIZE: usize = 5 * 1_024 * 1_024; // 5MiB.
     let bucket = env.bucket("PUT_BUCKET")?;
 
@@ -232,7 +232,7 @@ pub async fn put_multipart(env: &Env) -> Result<Response<Body>, Error> {
     Ok(Response::new("ok".into()))
 }
 
-pub async fn delete(env: &Env) -> Result<Response<Body>, Error> {
+pub async fn delete(env: &Env) -> Result<Response<Body>, WorkerError> {
     let bucket = env.bucket("DELETE_BUCKET")?;
 
     bucket.put("key", Data::Empty).execute().await?;
@@ -250,7 +250,7 @@ pub async fn delete(env: &Env) -> Result<Response<Body>, Error> {
 
 async fn put_full_properties(
     name: &str, bucket: &Bucket,
-) -> Result<(HttpMetadata, HashMap<String, String>, R2Object), Error> {
+) -> Result<(HttpMetadata, HashMap<String, String>, R2Object), WorkerError> {
     let (http_metadata, custom_metadata) = dummy_properties();
     let md5_hash: [u8; 16] = md5::compute("example").into();
     let object_with_props = bucket

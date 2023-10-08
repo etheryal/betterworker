@@ -90,6 +90,7 @@ checksum = "604178f6c5c21f02dc555784810edfb88d34ac2c73b2eae109655649ee73ce3d"
 name = "betterworker"
 version = "0.1.0"
 dependencies = [
+ "betterworker-d1",
  "betterworker-macros",
  "betterworker-sys",
  "bytes",
@@ -127,6 +128,22 @@ dependencies = [
  "tar",
  "ureq",
  "wasm-bindgen-cli-support",
+]
+
+[[package]]
+name = "betterworker-d1"
+version = "0.1.0"
+dependencies = [
+ "betterworker-sys",
+ "futures-util",
+ "js-sys",
+ "send_wrapper",
+ "serde",
+ "serde-wasm-bindgen",
+ "static_assertions",
+ "thiserror",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]

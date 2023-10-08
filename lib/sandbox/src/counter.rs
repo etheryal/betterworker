@@ -20,7 +20,7 @@ impl DurableObject for Counter {
         }
     }
 
-    async fn fetch(&mut self, _req: Request<Body>) -> Result<Response<Body>, Error> {
+    async fn fetch(&mut self, _req: Request<Body>) -> Result<Response<Body>, WorkerError> {
         if !self.initialized {
             self.initialized = true;
             self.count = self.state.storage().get("count").await.unwrap_or(0);

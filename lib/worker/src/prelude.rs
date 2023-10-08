@@ -14,7 +14,7 @@ pub use crate::delay::Delay;
 pub use crate::durable::*;
 pub use crate::dynamic_dispatch::*;
 pub use crate::env::{Env, Secret, Var};
-pub use crate::error::Error;
+pub use crate::error::WorkerError;
 pub use crate::fetch::fetch;
 pub use crate::fetcher::Fetcher;
 #[cfg(feature = "queue")]
