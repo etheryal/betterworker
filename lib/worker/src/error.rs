@@ -65,6 +65,7 @@ pub enum WorkerError {
     InvalidMessageBatch,
 
     #[error(transparent)]
+    #[cfg(feature = "d1")]
     D1Error(#[from] betterworker_d1::error::DatabaseError),
 }
 
