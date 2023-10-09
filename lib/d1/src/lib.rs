@@ -188,9 +188,7 @@ impl PreparedStatement {
     }
 
     /// Executes a query against the database but only return metadata.
-    pub async fn run<T>(&self) -> Result<D1Result, DatabaseError>
-    where
-        T: for<'a> Deserialize<'a>, {
+    pub async fn run(&self) -> Result<D1Result, DatabaseError> {
         let future = SendWrapper::new(JsFuture::from(self.0.run()));
         wrap_send(async move {
             let value = future.await.map_err(map_promise_err)?;
@@ -200,7 +198,7 @@ impl PreparedStatement {
         .await
     }
 
-    /// Executes a query against the database and returns all rows and metadata.
+    /// Executes a query against the database and returns all rows.
     pub async fn all<T>(&self) -> Result<Vec<T>, DatabaseError>
     where
         T: for<'a> Deserialize<'a>, {
@@ -365,7 +363,7 @@ mod tests {
     async_assert_fn!(PreparedStatement::bind(_, String): Send & Sync);
     async_assert_fn!(PreparedStatement::bind_many(_, _): Send & Sync);
     async_assert_fn!(PreparedStatement::first<String>(_, _): Send & Sync);
-    async_assert_fn!(PreparedStatement::run<String>(_): Send & Sync);
+    async_assert_fn!(PreparedStatement::run(_): Send & Sync);
     async_assert_fn!(PreparedStatement::all<String>(_): Send & Sync);
     async_assert_fn!(PreparedStatement::raw<String>(_): Send & Sync);
 }
