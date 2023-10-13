@@ -11,7 +11,7 @@ description = "This is a tool to be used as a custom build command for a Cloudfl
 [dependencies]
 anyhow = "1.0.72"
 dirs-next = "2.0.0"
-flate2 = "1.0.26"
+flate2 = "1.0.28"
 tar = "0.4.40"
 ureq = { version = "2.7.1", features = ["tls", "gzip"] }
 
