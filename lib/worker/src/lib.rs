@@ -1,6 +1,8 @@
 #![feature(async_fn_in_trait)]
 #![deny(unsafe_code)]
 
+#[cfg(feature = "d1")]
+pub use betterworker_d1 as d1;
 pub use betterworker_macros::{durable_object, event};
 #[doc(hidden)]
 pub use betterworker_sys;
@@ -12,8 +14,6 @@ pub use wasm_bindgen;
 #[doc(hidden)]
 pub use wasm_bindgen_futures;
 pub use worker_kv as kv;
-#[cfg(feature = "d1")]
-pub use betterworker_d1 as d1;
 
 pub mod abort;
 pub mod body;

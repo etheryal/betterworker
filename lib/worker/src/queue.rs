@@ -111,7 +111,8 @@ where
             .map_err(WorkerError::from_js_err)?
             .as_string()
             .ok_or(WorkerError::InvalidMessageBatch)?;
-        let value = js_sys::Reflect::get(message, self.0.body_key).map_err(WorkerError::from_js_err)?;
+        let value =
+            js_sys::Reflect::get(message, self.0.body_key).map_err(WorkerError::from_js_err)?;
         let body = serde_wasm_bindgen::from_value(value)?;
 
         Ok(Message {

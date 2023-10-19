@@ -197,7 +197,8 @@ impl WebSocket {
         let error_closure =
             self.add_event_handler("error", move |event: web_sys::ErrorEvent| {
                 let error = event.error();
-                tx.unbounded_send(Err(WorkerError::from_js_err(error))).unwrap();
+                tx.unbounded_send(Err(WorkerError::from_js_err(error)))
+                    .unwrap();
             })?;
 
         Ok(EventStream {
