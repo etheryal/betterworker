@@ -110,7 +110,7 @@ impl TryFrom<Object> for StringBinding {
     fn try_from(obj: Object) -> Result<Self> {
         let js_string = obj
             .dyn_into::<JsString>()
-            .map_err(|_| WorkerError::BindingCast)?;
+            .map_err(|_| WorkerError::InvalidBinding)?;
         Ok(Self(js_string.into()))
     }
 }

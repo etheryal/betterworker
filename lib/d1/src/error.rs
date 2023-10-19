@@ -1,11 +1,15 @@
+use serde_wasm_bindgen::Error as SerdeWasmBindgenError;
 use thiserror::Error;
 use wasm_bindgen::JsValue;
 
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum DatabaseError {
-    #[error("Binding cannot be cast")]
-    BindingCast,
+    #[error("D1 query error")]
+    Query,
+
+    #[error("Env binding is invalid")]
+    InvalidBinding,
 
     #[error("Failed to await promise: {0}")]
     AwaitPromise(String),
@@ -23,11 +27,9 @@ pub enum DatabaseError {
     Utf8Error(#[from] std::string::FromUtf8Error),
 }
 
-impl From<serde_wasm_bindgen::Error> for DatabaseError {
-    fn from(e: serde_wasm_bindgen::Error) -> Self {
-        let val: JsValue = e.into();
-        let msg = val.as_string().unwrap_or_else(|| "unknown".to_string());
-        DatabaseError::SerdeWasmBindgen(msg)
+impl From<SerdeWasmBindgenError> for DatabaseError {
+    fn from(e: SerdeWasmBindgenError) -> Self {
+        DatabaseError::SerdeWasmBindgen(format!("{}", e))
     }
 }
 

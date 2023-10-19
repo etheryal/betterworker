@@ -6,15 +6,18 @@ use betterworker_sys::{
 };
 use futures_util::Future;
 use js_sys::{Array, ArrayBuffer, Object, Uint8Array};
+use result::D1ExecResult;
 use send_wrapper::SendWrapper;
 use serde::Deserialize;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
+use crate::result::{D1Result, Result};
 
 use crate::error::DatabaseError;
 
 pub mod error;
 pub mod macros;
+pub mod result;
 
 /// A D1 Database.
 pub struct Database(SendWrapper<D1DatabaseSys>);
@@ -26,7 +29,7 @@ impl Database {
     }
 
     /// Dump the data in the database to a `Vec`.
-    pub async fn dump(&self) -> Result<Vec<u8>, DatabaseError> {
+    pub async fn dump(&self) -> Result<Vec<u8>> {
         let future = SendWrapper::new(JsFuture::from(self.0.dump()));
         wrap_send(async move {
             let array_buffer = future.await.map_err(map_promise_err)?;
@@ -46,7 +49,7 @@ impl Database {
     /// Returns the results in the same order as the provided statements.
     pub async fn batch<T>(
         &self, statements: Vec<PreparedStatement>,
-    ) -> Result<Vec<Vec<T>>, DatabaseError>
+    ) -> Result<Vec<D1Result<Vec<T>>>>
     where
         T: for<'a> Deserialize<'a>, {
         let future = {
@@ -63,7 +66,8 @@ impl Database {
                 .map_err(|_| DatabaseError::JsCast)?;
             let mut vec = Vec::with_capacity(results.length() as usize);
             for value in results.iter() {
-                vec.push(serde_wasm_bindgen::from_value(value)?);
+                let result: D1Result<Vec<T>> = serde_wasm_bindgen::from_value(value)?;
+                vec.push(result);
             }
             Ok(vec)
         })
@@ -83,7 +87,7 @@ impl Database {
     ///
     /// If an error occurs, an exception is thrown with the query and error
     /// messages, execution stops and further statements are not executed.
-    pub async fn exec(&self, query: &str) -> Result<D1ExecResult, DatabaseError> {
+    pub async fn exec(&self, query: &str) -> Result<D1ExecResult> {
         let future = SendWrapper::new(JsFuture::from(self.0.exec(query)));
         wrap_send(async move {
             let value = future.await.map_err(map_promise_err)?;
@@ -109,13 +113,13 @@ impl From<D1DatabaseSys> for Database {
 impl TryFrom<Object> for Database {
     type Error = DatabaseError;
 
-    fn try_from(obj: Object) -> Result<Self, DatabaseError> {
+    fn try_from(obj: Object) -> Result<Self> {
         const TYPE_NAME: &'static str = "D1Database";
 
         let data = if obj.constructor().name() == TYPE_NAME {
             obj.unchecked_into()
         } else {
-            return Err(DatabaseError::BindingCast);
+            return Err(DatabaseError::InvalidBinding);
         };
         Ok(Self(SendWrapper::new(data)))
     }
@@ -142,7 +146,7 @@ impl PreparedStatement {
     ///
     /// Supports Ordered (?NNNN) and Anonymous (?) parameters - named parameters
     /// are currently not supported.
-    pub fn bind(self, value: impl Into<JsValue>) -> Result<Self, DatabaseError> {
+    pub fn bind(self, value: impl Into<JsValue>) -> Result<Self> {
         self.bind_many(&[value.into()])
     }
 
@@ -157,7 +161,7 @@ impl PreparedStatement {
     ///
     /// Supports Ordered (?NNNN) and Anonymous (?) parameters - named parameters
     /// are currently not supported.
-    pub fn bind_many(self, values: &[JsValue]) -> Result<Self, DatabaseError> {
+    pub fn bind_many(self, values: &[JsValue]) -> Result<Self> {
         let array: Array = values.iter().collect::<Array>();
 
         self.0
@@ -175,7 +179,7 @@ impl PreparedStatement {
     ///
     /// If the query returns rows, but column does not exist, then this will
     /// return an `Err`.
-    pub async fn first<T>(&self, col_name: Option<&str>) -> Result<Option<T>, DatabaseError>
+    pub async fn first<T>(&self, col_name: Option<&str>) -> Result<Option<T>>
     where
         T: for<'a> Deserialize<'a>, {
         let future = SendWrapper::new(JsFuture::from(self.0.first(col_name)));
@@ -188,31 +192,32 @@ impl PreparedStatement {
     }
 
     /// Executes a query against the database but only return metadata.
-    pub async fn run(&self) -> Result<D1Result, DatabaseError> {
+    pub async fn run(&self) -> Result<D1Result<()>> {
         let future = SendWrapper::new(JsFuture::from(self.0.run()));
         wrap_send(async move {
             let value = future.await.map_err(map_promise_err)?;
-            let result = serde_wasm_bindgen::from_value(value)?;
-            Ok(D1Result::from(result))
+            let result: D1Result = serde_wasm_bindgen::from_value(value)?;
+            Ok(result)
         })
         .await
     }
 
     /// Executes a query against the database and returns all rows.
-    pub async fn all<T>(&self) -> Result<Vec<T>, DatabaseError>
+    pub async fn all<T>(&self) -> Result<D1Result<Vec<T>>>
     where
         T: for<'a> Deserialize<'a>, {
         let future = SendWrapper::new(JsFuture::from(self.0.all()));
         wrap_send(async move {
             let value = future.await.map_err(map_promise_err)?;
-            serde_wasm_bindgen::from_value(value).map_err(DatabaseError::from)
+            let result: D1Result<Vec<T>> = serde_wasm_bindgen::from_value(value)?;
+            Ok(result)
         })
         .await
     }
 
     /// Executes a query against the database and returns a `Vec` of rows
     /// instead of objects.
-    pub async fn raw<T>(&self) -> Result<Vec<Vec<T>>, DatabaseError>
+    pub async fn raw<T>(&self) -> Result<Vec<Vec<T>>>
     where
         T: for<'a> Deserialize<'a>, {
         let future = SendWrapper::new(JsFuture::from(self.0.raw()));
@@ -235,46 +240,6 @@ impl PreparedStatement {
 impl From<D1PreparedStatementSys> for PreparedStatement {
     fn from(inner: D1PreparedStatementSys) -> Self {
         Self(SendWrapper::new(inner))
-    }
-}
-
-/// The result of a D1 query execution.
-#[derive(Deserialize)]
-pub struct D1Result {
-    success: bool,
-    error: Option<String>,
-}
-
-impl D1Result {
-    /// Returns `true` if the result indicates a success, otherwise `false`.
-    pub fn success(&self) -> bool {
-        self.success
-    }
-
-    /// Return the error contained in this result.
-    ///
-    /// Returns `None` if the result indicates a success.
-    pub fn error(&self) -> Option<&String> {
-        self.error.as_ref()
-    }
-}
-
-/// The result of a single D1 database execution.
-#[derive(Deserialize)]
-pub struct D1ExecResult {
-    count: Option<u32>,
-    duration: Option<f64>,
-}
-
-impl D1ExecResult {
-    /// Returns the amount of rows affected by the query.
-    pub fn count(&self) -> Option<u32> {
-        self.count
-    }
-
-    /// Returns the amount of time it took to execute the query.
-    pub fn duration(&self) -> Option<f64> {
-        self.duration
     }
 }
 

@@ -323,7 +323,7 @@ pub async fn main(req: Request<Body>, env: Env, _ctx: Context) -> Result<Respons
         (Method::GET, "/d1/people") => {
             let d1: Database = env.d1("DB")?;
             let people = d1.prepare("select * from people;").all::<Person>().await?;
-            Response::new(serde_json::to_string(&people).unwrap().into())
+            Response::new(serde_json::to_string(people.results()).unwrap().into())
         },
         (Method::POST, "/d1/people") => {
             let create_person: CreatePerson =

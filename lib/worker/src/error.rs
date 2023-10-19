@@ -19,8 +19,8 @@ pub enum WorkerError {
     #[error("Binding `{0}` is undefined.")]
     UndefinedBinding(String),
 
-    #[error("Binding cannot be cast")]
-    BindingCast,
+    #[error("Env binding is invalid")]
+    InvalidBinding,
 
     #[error("Must pass in a struct type")]
     MustPassInStructType,

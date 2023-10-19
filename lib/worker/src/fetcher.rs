@@ -52,7 +52,7 @@ impl TryFrom<Object> for Fetcher {
         let data = if obj.constructor().name() == TYPE_NAME {
             obj.unchecked_into()
         } else {
-            return Err(WorkerError::BindingCast);
+            return Err(WorkerError::InvalidBinding);
         };
         Ok(Self(SendWrapper::new(data)))
     }
