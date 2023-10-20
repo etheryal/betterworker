@@ -33,19 +33,22 @@ impl D1ResultMetadata {
 /// The result of a D1 database execution.
 pub struct D1Result<T = ()> {
     #[serde(default)]
-    results: T,
+    results: Vec<T>,
     success: bool,
     meta: Option<D1ResultMetadata>,
 }
 
-impl<T> D1Result<T> {
+impl<T> D1Result<T>
+where
+    T: Default,
+{
     /// Returns a reference to the results of the query execution.
-    pub fn results(&self) -> &T {
+    pub fn results(&self) -> &Vec<T> {
         &self.results
     }
 
     /// Takes the results of the query execution.
-    pub fn take_results(self) -> T {
+    pub fn take_results(self) -> Vec<T> {
         self.results
     }
 

@@ -61,7 +61,7 @@ fn handle_a_request(req: Request<Body>) -> Response<Body> {
     )
 }
 
-#[derive(Deserialize, Serialize, Eq, PartialEq, Debug)]
+#[derive(Deserialize, Serialize, Eq, PartialEq, Debug, Default)]
 pub struct Person {
     pub id: i64,
     pub name: String,

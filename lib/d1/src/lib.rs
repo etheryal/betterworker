@@ -11,9 +11,9 @@ use send_wrapper::SendWrapper;
 use serde::Deserialize;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
-use crate::result::{D1Result, Result};
 
 use crate::error::DatabaseError;
+use crate::result::{D1Result, Result};
 
 pub mod error;
 pub mod macros;
@@ -47,11 +47,9 @@ impl Database {
     /// Batch execute one or more statements against the database.
     ///
     /// Returns the results in the same order as the provided statements.
-    pub async fn batch<T>(
-        &self, statements: Vec<PreparedStatement>,
-    ) -> Result<Vec<D1Result<Vec<T>>>>
+    pub async fn batch<T>(&self, statements: Vec<PreparedStatement>) -> Result<Vec<D1Result<T>>>
     where
-        T: for<'a> Deserialize<'a>, {
+        T: for<'a> Deserialize<'a> + Default, {
         let future = {
             let statements = statements
                 .into_iter()
@@ -66,7 +64,7 @@ impl Database {
                 .map_err(|_| DatabaseError::JsCast)?;
             let mut vec = Vec::with_capacity(results.length() as usize);
             for value in results.iter() {
-                let result: D1Result<Vec<T>> = serde_wasm_bindgen::from_value(value)?;
+                let result = serde_wasm_bindgen::from_value(value)?;
                 vec.push(result);
             }
             Ok(vec)
@@ -196,20 +194,20 @@ impl PreparedStatement {
         let future = SendWrapper::new(JsFuture::from(self.0.run()));
         wrap_send(async move {
             let value = future.await.map_err(map_promise_err)?;
-            let result: D1Result = serde_wasm_bindgen::from_value(value)?;
+            let result = serde_wasm_bindgen::from_value(value)?;
             Ok(result)
         })
         .await
     }
 
     /// Executes a query against the database and returns all rows.
-    pub async fn all<T>(&self) -> Result<D1Result<Vec<T>>>
+    pub async fn all<T>(&self) -> Result<D1Result<T>>
     where
-        T: for<'a> Deserialize<'a>, {
+        T: for<'a> Deserialize<'a> + Default, {
         let future = SendWrapper::new(JsFuture::from(self.0.all()));
         wrap_send(async move {
             let value = future.await.map_err(map_promise_err)?;
-            let result: D1Result<Vec<T>> = serde_wasm_bindgen::from_value(value)?;
+            let result = serde_wasm_bindgen::from_value(value)?;
             Ok(result)
         })
         .await
