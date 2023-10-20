@@ -49,7 +49,7 @@ impl Database {
     /// Returns the results in the same order as the provided statements.
     pub async fn batch<T>(&self, statements: Vec<PreparedStatement>) -> Result<Vec<D1Result<T>>>
     where
-        T: for<'a> Deserialize<'a> + Default, {
+        T: for<'a> Deserialize<'a>, {
         let future = {
             let statements = statements
                 .into_iter()
@@ -203,7 +203,7 @@ impl PreparedStatement {
     /// Executes a query against the database and returns all rows.
     pub async fn all<T>(&self) -> Result<D1Result<T>>
     where
-        T: for<'a> Deserialize<'a> + Default, {
+        T: for<'a> Deserialize<'a>, {
         let future = SendWrapper::new(JsFuture::from(self.0.all()));
         wrap_send(async move {
             let value = future.await.map_err(map_promise_err)?;
