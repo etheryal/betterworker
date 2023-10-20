@@ -8,7 +8,7 @@ pub type Result<T = ()> = std::result::Result<T, DatabaseError>;
 #[derive(Deserialize)]
 pub struct D1ResultMetadata {
     #[serde(default)]
-    duration: u64,
+    duration: f64,
 
     #[serde(default)]
     rows_read: u64,
@@ -19,7 +19,7 @@ pub struct D1ResultMetadata {
 
 impl D1ResultMetadata {
     /// Returns the amount of time it took to execute the query in milliseconds.
-    pub fn duration(&self) -> u64 {
+    pub fn duration(&self) -> f64 {
         self.duration
     }
 
