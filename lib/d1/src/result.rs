@@ -38,9 +38,14 @@ pub struct D1Result<T = ()> {
 }
 
 impl<T> D1Result<T> {
-    /// Returns the results of the query execution.
+    /// Returns a reference to the results of the query execution.
     pub fn results(&self) -> &T {
         &self.results
+    }
+
+    /// Takes the results of the query execution.
+    pub fn take_results(self) -> T {
+        self.results
     }
 
     /// Returns the metadata of the query execution.
