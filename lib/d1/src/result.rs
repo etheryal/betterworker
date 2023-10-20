@@ -32,6 +32,7 @@ impl D1ResultMetadata {
 #[derive(Deserialize)]
 /// The result of a D1 database execution.
 pub struct D1Result<T = ()> {
+    #[serde(default)]
     results: T,
     success: bool,
     meta: Option<D1ResultMetadata>,

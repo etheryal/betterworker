@@ -192,7 +192,7 @@ impl PreparedStatement {
     }
 
     /// Executes a query against the database but only return metadata.
-    pub async fn run(&self) -> Result<D1Result<()>> {
+    pub async fn run(&self) -> Result<D1Result> {
         let future = SendWrapper::new(JsFuture::from(self.0.run()));
         wrap_send(async move {
             let value = future.await.map_err(map_promise_err)?;
