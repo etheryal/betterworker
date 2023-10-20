@@ -8,8 +8,8 @@ pub type Result<T = ()> = std::result::Result<T, DatabaseError>;
 #[derive(Deserialize)]
 pub struct D1ResultMetadata {
     duration: u64,
-    rows_read: u64,
-    rows_written: u64,
+    rows_read: Option<u64>,
+    rows_written: Option<u64>,
 }
 
 impl D1ResultMetadata {
@@ -19,12 +19,12 @@ impl D1ResultMetadata {
     }
 
     /// Returns the number of rows read (scanned) by this query
-    pub fn rows_read(&self) -> u64 {
+    pub fn rows_read(&self) -> Option<u64> {
         self.rows_read
     }
 
     /// Returns the number of rows written by this query
-    pub fn rows_written(&self) -> u64 {
+    pub fn rows_written(&self) -> Option<u64> {
         self.rows_written
     }
 }
