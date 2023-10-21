@@ -166,8 +166,7 @@ impl PreparedStatement {
             .bind(array)
             .map(PreparedStatement::from)
             .map_err(|err| {
-                let reason = err.as_string().unwrap_or("Unkown reason".to_string());
-                DatabaseError::BindParameter(reason)
+                DatabaseError::BindParameter(extract_js_error(err))
             })
     }
 
@@ -251,6 +250,10 @@ where
 }
 
 fn map_promise_err(err: JsValue) -> DatabaseError {
+    DatabaseError::AwaitPromise(extract_js_error(err))
+}
+
+fn extract_js_error(err: JsValue) -> String {
     let message = err
         .as_string()
         .or_else(|| {
@@ -264,7 +267,7 @@ fn map_promise_err(err: JsValue) -> DatabaseError {
             })
         })
         .unwrap_or_else(|| format!("Unknown Javascript error: {:?}", err));
-    DatabaseError::AwaitPromise(message)
+    message
 }
 
 #[cfg(test)]
