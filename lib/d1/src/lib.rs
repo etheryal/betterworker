@@ -165,7 +165,10 @@ impl PreparedStatement {
         self.0
             .bind(array)
             .map(PreparedStatement::from)
-            .map_err(|_| DatabaseError::BindParameter)
+            .map_err(|err| {
+                let reason = err.as_string().unwrap_or("Unkown reason".to_string());
+                DatabaseError::BindParameter(reason)
+            })
     }
 
     /// Return the first row of results.

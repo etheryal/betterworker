@@ -17,8 +17,8 @@ pub enum DatabaseError {
     #[error("Failed to cast a JsValue")]
     JsCast,
 
-    #[error("Failed to bind a parameter")]
-    BindParameter,
+    #[error("Failed to bind a parameter: {0}")]
+    BindParameter(String),
 
     #[error("serde-wasm-bindgen error: {0}")]
     SerdeWasmBindgen(String),
