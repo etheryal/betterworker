@@ -232,7 +232,7 @@ impl<'bucket> PutOptionsBuilder<'bucket> {
 /// [create_multipart_upload](crate::r2::Bucket::create_multipart_upload)
 /// operation.
 pub struct CreateMultipartUploadOptionsBuilder<'bucket> {
-    pub(crate) edge_bucket: &'bucket EdgeR2Bucket,
+    pub(crate) edge_bucket: SendWrapper<&'bucket EdgeR2Bucket>,
     pub(crate) key: String,
     pub(crate) http_metadata: Option<HttpMetadata>,
     pub(crate) custom_metadata: Option<HashMap<String, String>>,

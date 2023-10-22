@@ -110,7 +110,7 @@ impl Bucket {
         &self, key: impl Into<String>,
     ) -> CreateMultipartUploadOptionsBuilder {
         CreateMultipartUploadOptionsBuilder {
-            edge_bucket: &self.0,
+            edge_bucket: SendWrapper::new(&self.0),
             key: key.into(),
             http_metadata: None,
             custom_metadata: None,
