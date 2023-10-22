@@ -5,11 +5,11 @@ use betterworker_sys::{
     FixedLengthStream as EdgeFixedLengthStream, R2Bucket as EdgeR2Bucket,
     R2MultipartUpload as EdgeR2MultipartUpload, R2Object as EdgeR2Object,
     R2ObjectBody as EdgeR2ObjectBody, R2Objects as EdgeR2Objects,
-    R2UploadedPart as EdgeR2UploadedPart,
 };
 pub use builder::*;
 use js_sys::{JsString, Object, Reflect, Uint8Array};
 use send_wrapper::SendWrapper;
+use serde::{Deserialize, Serialize};
 use wasm_bindgen::{JsCast, JsValue};
 
 use crate::date::Date;
@@ -328,17 +328,40 @@ impl<'body> ObjectBody<'body> {
 /// [UploadedPart] objects are returned from
 /// [upload_part](MultipartUpload::upload_part) operations and must be passed to
 /// the [complete](MultipartUpload::complete) operation.
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UploadedPart {
-    inner: SendWrapper<EdgeR2UploadedPart>,
+    part_number: u16,
+    etag: String,
 }
 
 impl UploadedPart {
-    pub fn part_number(&self) -> u16 {
-        self.inner.part_number()
+    pub fn new(part_number: u16, etag: String) -> Self {
+        Self { part_number, etag }
     }
 
-    pub fn etag(&self) -> String {
-        self.inner.etag()
+    pub fn part_number(&self) -> u16 {
+        self.part_number
+    }
+
+    pub fn etag(&self) -> &str {
+        &self.etag
+    }
+}
+
+impl TryFrom<JsValue> for UploadedPart {
+    type Error = WorkerError;
+
+    fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
+        serde_wasm_bindgen::from_value(value).map_err(WorkerError::from)
+    }
+}
+
+impl TryInto<JsValue> for UploadedPart {
+    type Error = WorkerError;
+
+    fn try_into(self) -> std::result::Result<JsValue, Self::Error> {
+        serde_wasm_bindgen::to_value(&self).map_err(WorkerError::from)
     }
 }
 
@@ -371,11 +394,11 @@ impl MultipartUpload {
         &self, part_number: u16, value: impl Into<Data>,
     ) -> Result<UploadedPart> {
         let fut = future_from_promise(self.inner.upload_part(part_number, value.into().into()));
-        let uploaded_part = fut.await.map_err(WorkerError::from_promise_err)?;
-
-        Ok(UploadedPart {
-            inner: SendWrapper::new(uploaded_part.into()),
-        })
+        let uploaded_part = fut
+            .await
+            .map_err(WorkerError::from_promise_err)?
+            .try_into()?;
+        Ok(uploaded_part)
     }
 
     /// Aborts the multipart upload.
@@ -391,14 +414,11 @@ impl MultipartUpload {
     pub async fn complete(
         self, uploaded_parts: impl IntoIterator<Item = UploadedPart>,
     ) -> Result<R2Object> {
-        let fut = future_from_promise(
-            self.inner.complete(
-                uploaded_parts
-                    .into_iter()
-                    .map(|part| part.inner.take().into())
-                    .collect(),
-            ),
-        );
+        let uploaded_parts = uploaded_parts
+            .into_iter()
+            .map(TryInto::try_into)
+            .collect::<Result<Vec<_>>>()?;
+        let fut = future_from_promise(self.inner.complete(uploaded_parts));
         let object = fut.await.map_err(WorkerError::from_promise_err)?;
         Ok(R2Object {
             inner: ObjectInner::Body(SendWrapper::new(object.into())),

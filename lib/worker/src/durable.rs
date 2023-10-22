@@ -807,7 +807,7 @@ pub struct SetAlarmOptions {
 ///     }
 /// }
 /// ```
-// #[async_trait(?Send)]
+#[allow(async_fn_in_trait)]
 pub trait DurableObject {
     fn new(state: State, env: Env) -> Self;
 

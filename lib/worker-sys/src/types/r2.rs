@@ -5,7 +5,6 @@ mod object;
 mod object_body;
 mod objects;
 mod range;
-mod uploaded_part;
 
 pub use bucket::*;
 pub use http_metadata::*;
@@ -14,4 +13,3 @@ pub use object::*;
 pub use object_body::*;
 pub use objects::*;
 pub use range::*;
-pub use uploaded_part::*;
