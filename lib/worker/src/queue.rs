@@ -11,7 +11,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::date::Date;
 use crate::error::WorkerError;
-use crate::futures::SendJsFuture;
+use crate::futures::future_from_promise;
 use crate::result::Result;
 
 static BODY_KEY_STR: &str = "body";
@@ -193,7 +193,7 @@ impl Queue {
         T: Serialize, {
         let fut = {
             let js_value = serde_wasm_bindgen::to_value(message)?;
-            SendJsFuture::from(self.0.send(js_value))
+            future_from_promise(self.0.send(js_value))
         };
 
         fut.await.map_err(WorkerError::from_promise_err)?;

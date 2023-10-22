@@ -3,7 +3,7 @@ use web_sys::WorkerGlobalScope;
 
 use crate::body::Body;
 use crate::error::WorkerError;
-use crate::futures::SendJsFuture;
+use crate::futures::future_from_promise;
 use crate::http::{request, response};
 use crate::result::Result;
 
@@ -37,7 +37,7 @@ pub async fn fetch(req: http::Request<impl Into<Body>>) -> Result<http::Response
         let req = request::into_web_sys_request(req);
         let promise = global.fetch_with_request(&req);
 
-        SendJsFuture::from(promise)
+        future_from_promise(promise)
     };
 
     fut.await

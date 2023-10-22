@@ -14,7 +14,7 @@ use wasm_bindgen::{JsCast, JsValue};
 
 use crate::date::Date;
 use crate::error::WorkerError;
-use crate::futures::SendJsFuture;
+use crate::futures::future_from_promise;
 use crate::result::Result;
 use crate::streams::{ByteStream, FixedLengthStream};
 
@@ -29,7 +29,7 @@ impl Bucket {
     pub async fn head(&self, key: impl Into<String>) -> Result<Option<R2Object>> {
         let fut = {
             let head_promise = self.0.head(key.into());
-            SendJsFuture::from(head_promise)
+            future_from_promise(head_promise)
         };
         let value = fut.await.map_err(WorkerError::from_promise_err)?;
 
@@ -80,7 +80,7 @@ impl Bucket {
     pub async fn delete(&self, key: impl Into<String>) -> Result<()> {
         let fut = {
             let delete_promise = self.0.delete(key.into());
-            SendJsFuture::from(delete_promise)
+            future_from_promise(delete_promise)
         };
 
         fut.await.map_err(WorkerError::from_promise_err)?;
@@ -309,7 +309,7 @@ impl<'body> ObjectBody<'body> {
     }
 
     pub async fn bytes(self) -> Result<Vec<u8>> {
-        let fut = SendJsFuture::from(self.inner.array_buffer());
+        let fut = future_from_promise(self.inner.array_buffer());
         let js_buffer = fut.await.map_err(WorkerError::from_promise_err)?;
 
         let js_buffer = Uint8Array::new(&js_buffer);
@@ -342,6 +342,11 @@ impl UploadedPart {
     }
 }
 
+/// [MultipartUpload] represents an in-progress multipart upload.
+/// [MultipartUpload] objects are returned from
+/// [create_multipart_upload](Bucket::create_multipart_upload) operations and
+/// must be passed to the [complete](MultipartUpload::complete) operation to
+/// complete the multipart upload.
 pub struct MultipartUpload {
     inner: SendWrapper<EdgeR2MultipartUpload>,
 }
@@ -365,7 +370,7 @@ impl MultipartUpload {
     pub async fn upload_part(
         &self, part_number: u16, value: impl Into<Data>,
     ) -> Result<UploadedPart> {
-        let fut = SendJsFuture::from(self.inner.upload_part(part_number, value.into().into()));
+        let fut = future_from_promise(self.inner.upload_part(part_number, value.into().into()));
         let uploaded_part = fut.await.map_err(WorkerError::from_promise_err)?;
 
         Ok(UploadedPart {
@@ -375,7 +380,7 @@ impl MultipartUpload {
 
     /// Aborts the multipart upload.
     pub async fn abort(&self) -> Result<()> {
-        let fut = SendJsFuture::from(self.inner.abort());
+        let fut = future_from_promise(self.inner.abort());
         fut.await.map_err(WorkerError::from_promise_err)?;
         Ok(())
     }
@@ -386,7 +391,7 @@ impl MultipartUpload {
     pub async fn complete(
         self, uploaded_parts: impl IntoIterator<Item = UploadedPart>,
     ) -> Result<R2Object> {
-        let fut = SendJsFuture::from(
+        let fut = future_from_promise(
             self.inner.complete(
                 uploaded_parts
                     .into_iter()
@@ -398,6 +403,16 @@ impl MultipartUpload {
         Ok(R2Object {
             inner: ObjectInner::Body(SendWrapper::new(object.into())),
         })
+    }
+
+    /// Returns the key of the object associated with this multipart upload.
+    pub fn key(&self) -> String {
+        self.inner.key()
+    }
+
+    /// Returns the upload ID of this multipart upload.
+    pub fn upload_id(&self) -> String {
+        self.inner.upload_id()
     }
 }
 

@@ -7,7 +7,7 @@ use wasm_bindgen::{JsCast, JsValue};
 
 use crate::body::Body;
 use crate::error::WorkerError;
-use crate::futures::SendJsFuture;
+use crate::futures::future_from_promise;
 use crate::http::{request, response};
 use crate::result::Result;
 
@@ -22,7 +22,7 @@ impl Fetcher {
             let req = request::into_web_sys_request(req);
             let promise = self.0.fetch(&req);
 
-            SendJsFuture::from(promise)
+            future_from_promise(promise)
         };
 
         let promise = fut.await.map_err(WorkerError::from_promise_err)?;

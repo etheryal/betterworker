@@ -4,7 +4,7 @@ use serde::Serialize;
 use wasm_bindgen::JsCast;
 
 use crate::body::Body;
-use crate::futures::SendJsFuture;
+use crate::futures::future_from_promise;
 use crate::http::{request, response};
 use crate::prelude::WorkerError;
 use crate::result::Result;
@@ -60,7 +60,7 @@ impl Cache {
             let global: web_sys::WorkerGlobalScope = js_sys::global().unchecked_into();
             let cache = global.caches().unwrap().open(&name);
 
-            SendJsFuture::from(cache)
+            future_from_promise(cache)
         };
 
         // unwrap is safe because this promise never rejects
@@ -90,7 +90,7 @@ impl Cache {
                 CacheKey::Request(req) => self.0.put_with_request(&req, &res.into().0),
             };
 
-            SendJsFuture::from(promise)
+            future_from_promise(promise)
         };
 
         fut.await.map_err(WorkerError::from_promise_err)?;
@@ -135,7 +135,7 @@ impl Cache {
                 CacheKey::Request(req) => self.0.match_with_request_and_options(&req, &options),
             };
 
-            SendJsFuture::from(promise)
+            future_from_promise(promise)
         };
 
         // `match` returns either a response or undefined
@@ -167,7 +167,7 @@ impl Cache {
                 CacheKey::Request(req) => self.0.delete_with_request_and_options(&req, &options),
             };
 
-            SendJsFuture::from(promise)
+            future_from_promise(promise)
         };
 
         let result = fut.await.map_err(WorkerError::from_promise_err)?;

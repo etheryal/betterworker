@@ -11,7 +11,7 @@ use wasm_bindgen::JsCast;
 use crate::body::wasm::WasmStreamBody;
 use crate::body::HttpBody;
 use crate::error::WorkerError;
-use crate::futures::SendJsFuture;
+use crate::futures::future_from_promise;
 
 type BoxBody = http_body::combinators::UnsyncBoxBody<Bytes, WorkerError>;
 
@@ -90,7 +90,7 @@ impl Body {
             buf: Result<js_sys::Promise, wasm_bindgen::JsValue>,
         ) -> Bytes {
             // Unwrapping only panics when the body has already been accessed before
-            let fut = SendJsFuture::from(buf.unwrap());
+            let fut = future_from_promise(buf.unwrap());
             let buf = js_sys::Uint8Array::new(&fut.await.unwrap());
             buf.to_vec().into()
         }

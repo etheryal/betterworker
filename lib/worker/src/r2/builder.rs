@@ -12,7 +12,7 @@ use wasm_bindgen::{JsCast, JsValue};
 use super::{Data, MultipartUpload, ObjectInner, R2Object, R2Objects};
 use crate::date::Date;
 use crate::error::WorkerError;
-use crate::futures::SendJsFuture;
+use crate::futures::future_from_promise;
 use crate::result::Result;
 
 /// Options for configuring the [get](crate::r2::Bucket::get) operation.
@@ -51,7 +51,7 @@ impl<'bucket> GetOptionsBuilder<'bucket> {
                 .into(),
             );
 
-            SendJsFuture::from(get_promise)
+            future_from_promise(get_promise)
         };
         let value = fut.await.map_err(WorkerError::from_promise_err)?;
 
@@ -214,7 +214,7 @@ impl<'bucket> PutOptionsBuilder<'bucket> {
                 }
                 .into(),
             );
-            SendJsFuture::from(put_promise)
+            future_from_promise(put_promise)
         };
 
         let res: EdgeR2Object = fut.await.map_err(WorkerError::from_promise_err)?.into();
@@ -276,7 +276,7 @@ impl<'bucket> CreateMultipartUploadOptionsBuilder<'bucket> {
                 .into(),
             );
 
-            SendJsFuture::from(create_multipart_upload_promise)
+            future_from_promise(create_multipart_upload_promise)
         };
 
         let inner: EdgeR2MutipartUpload = fut.await.map_err(WorkerError::from_promise_err)?.into();
@@ -418,7 +418,7 @@ impl<'bucket> ListOptionsBuilder<'bucket> {
                 .into(),
             );
 
-            SendJsFuture::from(list_promise)
+            future_from_promise(list_promise)
         };
 
         let inner = fut.await.map_err(WorkerError::from_promise_err)?.into();

@@ -1,4 +1,3 @@
-#![feature(async_fn_in_trait)]
 #![deny(unsafe_code)]
 
 #[cfg(feature = "d1")]
