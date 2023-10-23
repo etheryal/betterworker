@@ -47,7 +47,7 @@ impl Bucket {
     /// specified in options fails, get() returns an [Object] with no body.
     pub fn get(&self, key: impl Into<String>) -> GetOptionsBuilder {
         GetOptionsBuilder {
-            edge_bucket: &self.0,
+            edge_bucket: SendWrapper::new(&self.0),
             key: key.into(),
             only_if: None,
             range: None,

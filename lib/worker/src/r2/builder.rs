@@ -17,7 +17,7 @@ use crate::result::Result;
 
 /// Options for configuring the [get](crate::r2::Bucket::get) operation.
 pub struct GetOptionsBuilder<'bucket> {
-    pub(crate) edge_bucket: &'bucket EdgeR2Bucket,
+    pub(crate) edge_bucket: SendWrapper<&'bucket EdgeR2Bucket>,
     pub(crate) key: String,
     pub(crate) only_if: Option<Conditional>,
     pub(crate) range: Option<Range>,
