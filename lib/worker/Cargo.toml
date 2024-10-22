@@ -10,29 +10,30 @@ description = "A Rust SDK for writing Cloudflare Workers."
 
 [dependencies]
 chrono = { version = "0.4.26", default-features = false, features = ["wasmbind"] }
-chrono-tz = { version = "0.8.3", default-features = false }
+chrono-tz = { version = "0.10.0", default-features = false }
 futures-channel = "0.3.28"
 futures-util = { version = "0.3.28", default-features = false }
-http = "0.2.9"
+http = "1.1.0"
 js-sys = "0.3.64"
-matchit = "0.7.2"
+matchit = "0.8.4"
 pin-project = "1.1.3"
 serde = { version = "1.0.183", features = ["derive"] }
 serde_json = "1.0.104"
 url = "2.4.0"
 wasm-bindgen = "0.2.87"
 wasm-bindgen-futures = "0.4.37"
-serde-wasm-bindgen = "0.5.0"
-wasm-streams = "0.3.0"
-worker-kv = "0.6.0"
+serde-wasm-bindgen = "0.6.5"
+wasm-streams = "0.4.1"
+worker-kv = "0.8.0"
 betterworker-macros = { workspace = true }
 betterworker-sys = { workspace = true }
-http-body = "0.4.5"
+http-body = "1.0.1"
 bytes = "1.4.0"
 send_wrapper = { version = "0.6.0", features = ["futures"] }
 thiserror = "1.0.44"
 tokio = { version = "1.30.0", default-features = false }
 betterworker-d1 = { workspace = true, optional = true }
+http-body-util = "0.1.2"
 
 [dependencies.web-sys]
 version = "0.3.64"

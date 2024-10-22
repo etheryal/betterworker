@@ -4,7 +4,7 @@ use std::task::{Context, Poll};
 use bytes::Bytes;
 use futures_util::stream::FusedStream;
 use futures_util::{Stream, StreamExt};
-use http::HeaderMap;
+use http_body::Frame;
 use send_wrapper::SendWrapper;
 use wasm_bindgen::JsCast;
 use wasm_streams::readable::IntoStream;
@@ -26,20 +26,13 @@ impl http_body::Body for WasmStreamBody {
     type Error = WorkerError;
 
     #[inline]
-    fn poll_data(
+    fn poll_frame(
         mut self: Pin<&mut Self>, cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+    ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
         self.0
             .poll_next_unpin(cx)
-            .map_ok(|buf| js_sys::Uint8Array::from(buf).to_vec().into())
+            .map_ok(|buf| http_body::Frame::data(js_sys::Uint8Array::from(buf).to_vec().into()))
             .map_err(WorkerError::from_js_err)
-    }
-
-    #[inline]
-    fn poll_trailers(
-        self: Pin<&mut Self>, _cx: &mut Context<'_>,
-    ) -> Poll<Result<Option<HeaderMap>, Self::Error>> {
-        Poll::Ready(Ok(None))
     }
 
     #[inline]

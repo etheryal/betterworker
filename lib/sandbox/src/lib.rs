@@ -1,4 +1,3 @@
-#![feature(async_fn_in_trait)]
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -31,14 +30,6 @@ struct ApiData {
     user_id: i32,
     title: String,
     completed: bool,
-}
-
-#[derive(Serialize)]
-struct User {
-    id: String,
-    timestamp: u64,
-    date_from_int: String,
-    date_from_str: String,
 }
 
 #[derive(Deserialize, Serialize)]

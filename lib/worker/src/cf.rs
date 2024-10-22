@@ -9,7 +9,7 @@ use send_wrapper::SendWrapper;
 /// Cloudflare’s edge.
 ///
 /// [Details](https://developers.cloudflare.com/workers/runtime-apis/request#incomingrequestcfproperties)
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Cf(SendWrapper<IncomingRequestCfProperties>);
 
 impl Cf {

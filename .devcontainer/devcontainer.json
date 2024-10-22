@@ -1,0 +1,25 @@
+{
+	"name": "Rust",
+	"build": {
+        "dockerfile": "Dockerfile"
+    },
+	"workspaceMount": "",
+	"runArgs": [
+		"--userns=keep-id:uid=1000,gid=1000",
+		"--volume=${localWorkspaceFolder}:/workspaces/${localWorkspaceFolderBasename}:Z"
+	],
+	"containerUser": "vscode",
+	"updateRemoteUserUID": true,
+	"containerEnv": {
+	  "HOME": "/home/vscode"
+	},
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"tauri-apps.tauri-vscode",
+				"ms-azuretools.vscode-docker",
+				"BarbossHack.crates-io"
+			]
+		}
+	}
+}

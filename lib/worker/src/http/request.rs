@@ -1,8 +1,6 @@
 //! Functions for translating requests to and from JS
 
 use betterworker_sys::ext::{HeadersExt, RequestExt};
-use bytes::Buf;
-use futures_util::StreamExt;
 use wasm_bindgen::JsCast;
 
 use super::RequestRedirect;
@@ -129,16 +127,10 @@ pub fn into_web_sys_request(mut req: http::Request<Body>) -> web_sys::Request {
     }
 
     let body = req.into_body();
-    let body = if body.is_none() {
-        None
+    let body = if let Some(body_stream) = body.into_stream() {
+        Some(body_stream.unchecked_into())
     } else {
-        let stream = wasm_streams::ReadableStream::from_stream(body.map(|chunk| {
-            chunk
-                .map(|buf| js_sys::Uint8Array::from(buf.chunk()).into())
-                .map_err(|_| wasm_bindgen::JsValue::NULL)
-        }));
-
-        Some(stream.into_raw().unchecked_into())
+        None
     };
     init.body(body.as_ref());
 

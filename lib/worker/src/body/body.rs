@@ -2,8 +2,9 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use bytes::{Buf, Bytes};
-use futures_util::{Stream, StreamExt};
-use http::HeaderMap;
+use futures_util::StreamExt;
+use http_body::Frame;
+use http_body_util::{BodyDataStream, BodyExt};
 use send_wrapper::SendWrapper;
 use serde::de::DeserializeOwned;
 use wasm_bindgen::JsCast;
@@ -13,12 +14,13 @@ use crate::body::HttpBody;
 use crate::error::WorkerError;
 use crate::futures::future_from_promise;
 
-type BoxBody = http_body::combinators::UnsyncBoxBody<Bytes, WorkerError>;
+type BoxBody = http_body_util::combinators::UnsyncBoxBody<Bytes, WorkerError>;
 
 fn try_downcast<T, K>(k: K) -> Result<T, K>
 where
     T: 'static,
-    K: Send + 'static, {
+    K: Send + 'static,
+{
     let mut k = Some(k);
     if let Some(k) = <dyn std::any::Any>::downcast_mut::<Option<T>>(&mut k) {
         Ok(k.take().unwrap())
@@ -51,7 +53,8 @@ impl Body {
     /// ```
     pub fn new<B>(body: B) -> Self
     where
-        B: HttpBody<Data = Bytes> + Send + 'static, {
+        B: HttpBody<Data = Bytes> + Send + 'static,
+    {
         if body
             .size_hint()
             .exact()
@@ -99,7 +102,7 @@ impl Body {
         // JS types might improve performance as there's no polling overhead.
         match self.0 {
             BodyInner::None => Ok(Bytes::new()),
-            BodyInner::BoxBody(body) => super::to_bytes(body).await,
+            BodyInner::BoxBody(body) => super::to_bytes::http_body_to_bytes(body).await,
             BodyInner::WebSysRequest(req) => Ok(array_buffer_to_bytes(req.array_buffer()).await),
             BodyInner::WebSysResponse(res) => Ok(array_buffer_to_bytes(res.array_buffer()).await),
         }
@@ -149,20 +152,11 @@ impl Body {
             .and_then(|buf| serde_json::from_slice(&buf).map_err(WorkerError::SerdeJsonError))
     }
 
-    pub(crate) fn is_none(&self) -> bool {
-        match &self.0 {
-            BodyInner::None => true,
-            BodyInner::BoxBody(_) => false,
-            BodyInner::WebSysRequest(req) => req.body().is_none(),
-            BodyInner::WebSysResponse(res) => res.body().is_none(),
-        }
-    }
-
     pub(crate) fn into_stream(self) -> Option<web_sys::ReadableStream> {
         match &self.0 {
             BodyInner::None => None,
             BodyInner::BoxBody(_) => {
-                let stream = self.map(|chunk| {
+                let stream = BodyDataStream::new(self).map(|chunk| {
                     chunk
                         .map(|buf| js_sys::Uint8Array::from(buf.chunk()).into())
                         .map_err(|_| wasm_bindgen::JsValue::NULL)
@@ -229,7 +223,7 @@ macro_rules! body_from_impl {
     ($ty:ty) => {
         impl From<$ty> for Body {
             fn from(buf: $ty) -> Self {
-                Self::new(http_body::Full::from(buf))
+                Self::new(http_body_util::Full::from(buf))
             }
         }
     };
@@ -250,22 +244,12 @@ impl HttpBody for Body {
     type Error = WorkerError;
 
     #[inline]
-    fn poll_data(
+    fn poll_frame(
         mut self: Pin<&mut Self>, cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+    ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
         match self.as_inner_box_body() {
-            Some(body) => Pin::new(body).poll_data(cx),
+            Some(body) => Pin::new(body).poll_frame(cx),
             None => Poll::Ready(None),
-        }
-    }
-
-    #[inline]
-    fn poll_trailers(
-        mut self: Pin<&mut Self>, cx: &mut Context<'_>,
-    ) -> Poll<Result<Option<HeaderMap>, Self::Error>> {
-        match self.as_inner_box_body() {
-            Some(body) => Pin::new(body).poll_trailers(cx),
-            None => Poll::Ready(Ok(None)),
         }
     }
 
@@ -287,15 +271,6 @@ impl HttpBody for Body {
             BodyInner::WebSysRequest(_) => false,
             BodyInner::WebSysResponse(_) => false,
         }
-    }
-}
-
-impl Stream for Body {
-    type Item = Result<Bytes, WorkerError>;
-
-    #[inline]
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.poll_data(cx)
     }
 }
 
